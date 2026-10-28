@@ -1,0 +1,1995 @@
+package com.babyshark.tv;
+
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RadialGradient;
+import android.graphics.RectF;
+import android.graphics.Shader;
+import android.os.SystemClock;
+import android.view.KeyEvent;
+import android.view.View;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
+
+public class DiverGameView extends View {
+
+    public interface OnGameEventListener {
+        void onSurfaced(int caughtCount);
+        void onCoinsUpdated(int totalCoins);
+    }
+
+    private final GameState state;
+    private OnGameEventListener listener;
+    private final Random random = new Random();
+
+    // Paints
+    private final Paint diverPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint fishPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint harpoonPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint ropePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint hudPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint lightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint envPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    // Player Dave Diver State
+    private float diverX = 850f;
+    private float diverY = 240f;
+    private float diverVx = 0f;
+    private float diverVy = 0f;
+    private float diverAngle = 0f;
+    private float facingScale = 1.0f; // Smooth horizontal turn [-1.0 to 1.0]
+    private float targetFacingScale = 1.0f;
+    private float swimCycle = 0f;
+    private float breathTimer = 0f;
+    private float oxygen;
+    private float maxOxygen;
+
+    // Damage & Screen Shake
+    private float invincibleTimer = 0f;
+    private float screenShakeTimer = 0f;
+    private float hurtFlashTimer = 0f;
+
+    // World & Camera (Expanded down to 4600f for Deep Abyssal Caves!)
+    private final float worldWidth = 2600f;
+    private final float worldHeight = 4600f;
+    private float cameraX = 0f;
+    private float cameraY = 0f;
+
+    // Remote Input State & Watchdog
+    private float inputX = 0f;
+    private float inputY = 0f;
+    private long lastInputTime = 0;
+
+    // Weapons: 1. Harpoon 2. Bubble Stun Gun
+    public enum WeaponMode { HARPOON, BUBBLE_GUN }
+    private WeaponMode currentWeapon = WeaponMode.HARPOON;
+
+    // Harpoon Gun & Reel State
+    private enum HarpoonState { IDLE, FIRING, REELING }
+    private HarpoonState harpoonState = HarpoonState.IDLE;
+    private float harpoonStartX, harpoonStartY;
+    private float harpoonX, harpoonY;
+    private float harpoonVx, harpoonVy;
+    private float harpoonDist = 0f;
+    private RealisticFish hookedFish = null;
+    private RealisticFish targetFish = null;
+
+    // Bubble Stun Projectile
+    private static class BubbleBullet {
+        float x, y, vx, vy, radius;
+        float lifeTime;
+    }
+    private final List<BubbleBullet> activeBubbles = new ArrayList<>();
+
+    // Sequence 1: Deep Abyssal Cave Glowing Crystals
+    private static class GlowingCrystal {
+        float x, y, size;
+        int color;
+        float pulseSpeed;
+    }
+    private final List<GlowingCrystal> caveCrystals = new ArrayList<>();
+
+    // Sequence 2: Sunken Pirate Galleon Shipwreck
+    private static class SunkenShipwreck {
+        float x = 1150f;
+        float y = 3280f;
+        float width = 640f;
+        float height = 240f;
+    }
+    private final SunkenShipwreck shipwreck = new SunkenShipwreck();
+
+    // Sequence 2: Interactive Sunken Treasure Chests
+    private static class TreasureChest {
+        float x, y;
+        boolean opened;
+        int rewardCoins;
+        float openProgress; // 0.0 to 1.0
+        String name;
+    }
+    private final List<TreasureChest> treasureChests = new ArrayList<>();
+
+    // Sequence 2: Giant Pearl Clams
+    private static class PearlClam {
+        float x, y;
+        boolean hasPearl = true;
+        float openCycle = 0f; // Oscillates opening and closing
+        float respawnTimer = 0f;
+        int rewardCoins = 90;
+    }
+    private final List<PearlClam> pearlClams = new ArrayList<>();
+
+    // Sequence 3: Friendly Dolphin Rescue Bobo
+    private static class FriendlyDolphin {
+        float x = 500f;
+        float y = 500f;
+        float vx = 0f;
+        float vy = 0f;
+        float facing = 1.0f;
+        float swimPhase = 0f;
+        boolean active = false;
+        boolean isRescuing = false;
+        float callSoundTimer = 0f;
+    }
+    private final FriendlyDolphin bobo = new FriendlyDolphin();
+
+    // Dave the Diver Kelp Forest & Coral Formations
+    private static class KelpPlant {
+        float x, baseY, height, phaseOffset;
+        int leafCount;
+        boolean isBackground;
+    }
+    private final List<KelpPlant> kelpForest = new ArrayList<>();
+
+    private static class CoralShelf {
+        float x, y, width;
+        int coralType; // 0: Staghorn coral, 1: Table coral, 2: Sea anemone
+        int color;
+    }
+    private final List<CoralShelf> coralShelves = new ArrayList<>();
+
+    private static class MarineSnow {
+        float x, y, r, speedX, speedY;
+    }
+    private final List<MarineSnow> planktonList = new ArrayList<>();
+
+    // Visual FX
+    private static class GameFX {
+        float x, y, vy;
+        String text;
+        int color;
+        float alpha;
+        long spawnTime;
+        float size;
+    }
+    private final List<GameFX> effects = new ArrayList<>();
+
+    // Bubbles
+    private static class Bubble {
+        float x, y, r, speed;
+        boolean isOxygenPickup;
+        boolean isDaveBreath;
+    }
+    private final List<Bubble> bubbles = new ArrayList<>();
+
+    // Realistic Fish Class
+    public static class RealisticFish {
+        public enum Species {
+            CLOWNFISH, BLUE_TANG, YELLOW_TANG, BABY_SHARK, REEF_SHARK, GREAT_SHARK, GIANT_TUNA, JELLYFISH,
+            ANGLERFISH, NEON_JELLYFISH
+        }
+
+        public Species species;
+        public String name;
+        public int value;
+        public float weightKg;
+        public float x, y, vx, vy;
+        public float length, bodyHeight;
+        public float facing = 1f; // 1 = right, -1 = left
+        public float swimPhase;
+        public float swimSpeedMultiplier;
+        public int primaryColor, secondaryColor, bellyColor;
+        public boolean isAttacking = false;
+
+        // Sequence 3: Stun / Sleep State from Bubble Gun
+        public boolean isSleeping = false;
+        public float sleepTimer = 0f;
+        public float bubbleEncloseRadius = 0f;
+    }
+    private final List<RealisticFish> fishes = new ArrayList<>();
+
+    private long lastFrameTime = 0;
+    private boolean isRunning = true;
+
+    public DiverGameView(Context context) {
+        super(context);
+        setFocusable(true);
+        setFocusableInTouchMode(true);
+        state = GameState.get(context);
+        initGame();
+    }
+
+    public void setOnGameEventListener(OnGameEventListener listener) {
+        this.listener = listener;
+    }
+
+    public void initGame() {
+        maxOxygen = state.getMaxOxygen();
+        oxygen = maxOxygen;
+        diverX = 900f;
+        diverY = 240f;
+        diverVx = 0;
+        diverVy = 0;
+        diverAngle = 0;
+        facingScale = 1.0f;
+        targetFacingScale = 1.0f;
+        swimCycle = 0;
+        currentWeapon = WeaponMode.HARPOON;
+        harpoonState = HarpoonState.IDLE;
+        hookedFish = null;
+        targetFish = null;
+        invincibleTimer = 0f;
+        screenShakeTimer = 0f;
+        hurtFlashTimer = 0f;
+
+        fishes.clear();
+        effects.clear();
+        bubbles.clear();
+        kelpForest.clear();
+        coralShelves.clear();
+        treasureChests.clear();
+        pearlClams.clear();
+        caveCrystals.clear();
+        activeBubbles.clear();
+        planktonList.clear();
+
+        // 1. Generate marine snow / drifting plankton for deep underwater feel
+        for (int i = 0; i < 90; i++) {
+            MarineSnow ms = new MarineSnow();
+            ms.x = random.nextFloat() * worldWidth;
+            ms.y = random.nextFloat() * worldHeight;
+            ms.r = 1.5f + random.nextFloat() * 2.5f;
+            ms.speedX = (random.nextFloat() - 0.5f) * 0.8f;
+            ms.speedY = -0.4f - random.nextFloat() * 0.8f;
+            planktonList.add(ms);
+        }
+
+        // 2. Layered Kelp Forest (Background & Foreground lush fronds with air vesicles)
+        for (float x = 60f; x < worldWidth - 60f; x += 75f) {
+            KelpPlant bgKelp = new KelpPlant();
+            bgKelp.x = x + (random.nextFloat() - 0.5f) * 30f;
+            bgKelp.baseY = 2800f;
+            bgKelp.height = 280f + random.nextFloat() * 300f;
+            bgKelp.phaseOffset = random.nextFloat() * 6.28f;
+            bgKelp.leafCount = 6 + random.nextInt(4);
+            bgKelp.isBackground = true;
+            kelpForest.add(bgKelp);
+
+            if (random.nextBoolean()) {
+                KelpPlant fgKelp = new KelpPlant();
+                fgKelp.x = x + 35f + (random.nextFloat() - 0.5f) * 20f;
+                fgKelp.baseY = 2820f;
+                fgKelp.height = 320f + random.nextFloat() * 320f;
+                fgKelp.phaseOffset = random.nextFloat() * 6.28f;
+                fgKelp.leafCount = 7 + random.nextInt(4);
+                fgKelp.isBackground = false;
+                kelpForest.add(fgKelp);
+            }
+        }
+
+        // 3. Natural Underwater Coral Reef Shelves & Formations
+        float[] shelfDepths = { 650f, 1350f, 2150f, 2950f, 3850f };
+        for (float depth : shelfDepths) {
+            for (int k = 0; k < 3; k++) {
+                CoralShelf cs = new CoralShelf();
+                cs.x = 200f + k * 800f + random.nextFloat() * 200f;
+                cs.y = depth + random.nextFloat() * 150f;
+                cs.width = 170f + random.nextFloat() * 120f;
+                cs.coralType = random.nextInt(3);
+                int[] coralColors = { 0xFFFF6F00, 0xFFE91E63, 0xFF9C27B0, 0xFF00BCD4, 0xFFFFB300 };
+                cs.color = coralColors[random.nextInt(coralColors.length)];
+                coralShelves.add(cs);
+            }
+        }
+
+        // Sequence 1: Glowing cave crystals in deep abyssal zone (Y: 3400 ~ 4550)
+        int[] crystalColors = { 0xFF00E5FF, 0xFFE040FB, 0xFF00E676, 0xFFFFD700, 0xFF76FF03 };
+        for (int i = 0; i < 45; i++) {
+            GlowingCrystal gc = new GlowingCrystal();
+            gc.x = 80f + random.nextFloat() * (worldWidth - 160f);
+            gc.y = 3450f + random.nextFloat() * 1100f;
+            gc.size = 18f + random.nextFloat() * 24f;
+            gc.color = crystalColors[random.nextInt(crystalColors.length)];
+            gc.pulseSpeed = 2f + random.nextFloat() * 3.5f;
+            caveCrystals.add(gc);
+        }
+
+        // Sequence 2: 4 Interactive Sunken Treasure Chests
+        addTreasureChest(420f, 820f, 80, "淺海珊瑚寶箱");
+        addTreasureChest(2150f, 1850f, 130, "巨藻林暗礁寶箱");
+        addTreasureChest(1460f, 3270f, 220, "沉船甲板主寶箱");
+        addTreasureChest(750f, 4320f, 320, "深淵神秘水晶寶箱");
+
+        // Sequence 2: Giant Pearl Clams on Coral Shelves
+        addPearlClam(320f, 950f);
+        addPearlClam(1950f, 2180f);
+        addPearlClam(1100f, 3950f);
+
+        // Sequence 3: Friendly Dolphin Bobo setup
+        bobo.x = 200f;
+        bobo.y = 300f;
+        bobo.active = false;
+        bobo.isRescuing = false;
+
+        // 5. Ambient bubbles
+        for (int i = 0; i < 45; i++) {
+            Bubble b = new Bubble();
+            b.x = random.nextFloat() * worldWidth;
+            b.y = random.nextFloat() * worldHeight;
+            b.r = 6f + random.nextFloat() * 14f;
+            b.speed = 1.2f + random.nextFloat() * 2.5f;
+            b.isOxygenPickup = (random.nextInt(5) == 0);
+            bubbles.add(b);
+        }
+
+        // 6. Populate realistic marine fish species across depths
+        // Shallow Reef (0m - 90m / Y: 200 - 1050)
+        spawnSpecies(RealisticFish.Species.CLOWNFISH, "小丑魚 (Clownfish)", 20, 1.2f, 10, 200f, 1000f);
+        spawnSpecies(RealisticFish.Species.BLUE_TANG, "藍倒吊 (Blue Tang)", 25, 1.8f, 8, 250f, 1100f);
+        spawnSpecies(RealisticFish.Species.YELLOW_TANG, "黃金蝶魚 (Yellow Tang)", 28, 1.5f, 7, 350f, 1200f);
+
+        // Mid Blue Hole (90m - 230m / Y: 1050 - 2450)
+        spawnSpecies(RealisticFish.Species.BABY_SHARK, "Baby Shark 小鯊魚", 55, 8.5f, 5, 700f, 2250f);
+        spawnSpecies(RealisticFish.Species.JELLYFISH, "海月水母 (Moon Jellyfish)", 40, 2.5f, 6, 750f, 2400f);
+        spawnSpecies(RealisticFish.Species.REEF_SHARK, "黑鰭礁鯊 (Reef Shark)", 75, 15.0f, 4, 1100f, 2600f);
+
+        // Deep Trench (230m - 340m / Y: 2450 - 3500)
+        spawnSpecies(RealisticFish.Species.GREAT_SHARK, "大白鯊 (Great White Shark)", 120, 28.0f, 2, 2350f, 3400f);
+        spawnSpecies(RealisticFish.Species.GIANT_TUNA, "藍鰭巨鮪 (Giant Bluefin Tuna)", 160, 35.0f, 2, 2450f, 3450f);
+        spawnSpecies(RealisticFish.Species.NEON_JELLYFISH, "深海霓虹發光水母", 85, 3.8f, 4, 2300f, 3600f);
+
+        // Sequence 1: Abyssal Bioluminescent Cave (340m - 440m+ / Y: 3500 - 4550)
+        spawnSpecies(RealisticFish.Species.ANGLERFISH, "深海安康魚 (Anglerfish)", 180, 22.0f, 4, 3550f, 4520f);
+        spawnSpecies(RealisticFish.Species.NEON_JELLYFISH, "深海霓虹發光水母", 85, 3.8f, 3, 3700f, 4550f);
+
+        lastFrameTime = SystemClock.uptimeMillis();
+    }
+
+    private void addTreasureChest(float x, float y, int reward, String name) {
+        TreasureChest tc = new TreasureChest();
+        tc.x = x;
+        tc.y = y;
+        tc.rewardCoins = reward;
+        tc.name = name;
+        tc.opened = false;
+        tc.openProgress = 0f;
+        treasureChests.add(tc);
+    }
+
+    private void addPearlClam(float x, float y) {
+        PearlClam pc = new PearlClam();
+        pc.x = x;
+        pc.y = y;
+        pc.hasPearl = true;
+        pc.openCycle = random.nextFloat() * 6.28f;
+        pearlClams.add(pc);
+    }
+
+    private void spawnSpecies(RealisticFish.Species sp, String name, int val, float weight, int count, float minY, float maxY) {
+        for (int i = 0; i < count; i++) {
+            RealisticFish f = new RealisticFish();
+            f.species = sp;
+            f.name = name;
+            f.value = val;
+            f.weightKg = weight;
+            f.x = random.nextFloat() * worldWidth;
+            f.y = minY + random.nextFloat() * (maxY - minY);
+            f.vx = (random.nextBoolean() ? 1f : -1f) * (1.3f + random.nextFloat() * 1.8f);
+            f.facing = f.vx > 0 ? 1f : -1f;
+            f.swimPhase = random.nextFloat() * 6.28f;
+            f.swimSpeedMultiplier = 4f + random.nextFloat() * 2f;
+
+            switch (sp) {
+                case CLOWNFISH:
+                    f.length = 78f; f.bodyHeight = 48f;
+                    f.primaryColor = 0xFFFF6D00; f.secondaryColor = 0xFFFFFFFF; f.bellyColor = 0xFFFF8F00;
+                    break;
+                case BLUE_TANG:
+                    f.length = 85f; f.bodyHeight = 54f;
+                    f.primaryColor = 0xFF1565C0; f.secondaryColor = 0xFF212121; f.bellyColor = 0xFFFFD600;
+                    break;
+                case YELLOW_TANG:
+                    f.length = 82f; f.bodyHeight = 58f;
+                    f.primaryColor = 0xFFFFEA00; f.secondaryColor = 0xFFFFD600; f.bellyColor = 0xFFFFF59D;
+                    break;
+                case JELLYFISH:
+                    f.length = 70f; f.bodyHeight = 80f;
+                    f.primaryColor = 0xDDBA68C8; f.secondaryColor = 0xAA7B1FA2; f.bellyColor = 0x66E1BEE7;
+                    break;
+                case NEON_JELLYFISH:
+                    f.length = 82f; f.bodyHeight = 92f;
+                    f.primaryColor = 0xCC00E5FF; f.secondaryColor = 0xEEFF4081; f.bellyColor = 0x8876FF03;
+                    break;
+                case BABY_SHARK:
+                    f.length = 150f; f.bodyHeight = 68f;
+                    f.primaryColor = 0xFFFFD166; f.secondaryColor = 0xFFFFB703; f.bellyColor = 0xFFFFFFFF;
+                    break;
+                case REEF_SHARK:
+                    f.length = 190f; f.bodyHeight = 74f;
+                    f.primaryColor = 0xFF607D8B; f.secondaryColor = 0xFF212121; f.bellyColor = 0xFFF5F5F5;
+                    break;
+                case GREAT_SHARK:
+                    f.length = 240f; f.bodyHeight = 95f;
+                    f.primaryColor = 0xFF37474F; f.secondaryColor = 0xFF212121; f.bellyColor = 0xFFFFFFFF;
+                    break;
+                case GIANT_TUNA:
+                    f.length = 215f; f.bodyHeight = 84f;
+                    f.primaryColor = 0xFF0D47A1; f.secondaryColor = 0xFFFFD700; f.bellyColor = 0xFFECEFF1;
+                    break;
+                case ANGLERFISH:
+                    f.length = 165f; f.bodyHeight = 110f;
+                    f.primaryColor = 0xFF263238; f.secondaryColor = 0xFF00E5FF; f.bellyColor = 0xFF1A237E;
+                    break;
+            }
+            fishes.add(f);
+        }
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        long now = SystemClock.uptimeMillis();
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                inputX = -1.0f;
+                targetFacingScale = -1.0f;
+                lastInputTime = now;
+                return true;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                inputX = 1.0f;
+                targetFacingScale = 1.0f;
+                lastInputTime = now;
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                // If not moving, allow quick weapon switch with remote UP key!
+                if (inputX == 0f && inputY == 0f && now - lastInputTime > 300) {
+                    toggleWeapon();
+                }
+                inputY = -1.0f;
+                lastInputTime = now;
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                inputY = 1.0f;
+                lastInputTime = now;
+                return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_BUTTON_A:
+                onActionPressed();
+                return true;
+            case KeyEvent.KEYCODE_BACK:
+                surfaceAndReturn();
+                return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                if (inputX < 0f) inputX = 0f;
+                return true;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                if (inputX > 0f) inputX = 0f;
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (inputY < 0f) inputY = 0f;
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (inputY > 0f) inputY = 0f;
+                return true;
+        }
+        return super.onKeyUp(keyCode, event);
+    }
+
+    private void toggleWeapon() {
+        if (currentWeapon == WeaponMode.HARPOON) {
+            currentWeapon = WeaponMode.BUBBLE_GUN;
+            SoundManager.get(getContext()).playBubbleGun();
+            addFX(diverX, diverY - 55f, "🫧 切換至：氣泡催眠槍！(可活捉大魚)", 0xFF00E5FF, 32f);
+        } else {
+            currentWeapon = WeaponMode.HARPOON;
+            SoundManager.get(getContext()).playHarpoon();
+            addFX(diverX, diverY - 55f, "🎯 切換至：強力捕魚叉！", 0xFFFFD700, 32f);
+        }
+    }
+
+    private void onActionPressed() {
+        // Sequence 3: Dolphin rescue prompt triggered
+        if (bobo.active && !bobo.isRescuing && (oxygen / maxOxygen < 0.25f)) {
+            triggerDolphinRescue();
+            return;
+        }
+
+        // Sequence 2: Check Treasure Chests interaction
+        for (TreasureChest c : treasureChests) {
+            if (!c.opened && Math.hypot(diverX - c.x, diverY - c.y) < 140f) {
+                c.opened = true;
+                state.coins += c.rewardCoins;
+                state.save();
+                SoundManager.get(getContext()).playChest();
+                addFX(c.x, c.y - 45f, "🎁 打開 " + c.name + "！獲得 +" + c.rewardCoins + " 貝殼金幣！", 0xFFFFD700, 36f);
+                if (listener != null) listener.onCoinsUpdated(state.coins);
+                return;
+            }
+        }
+
+        // Sequence 2: Check Giant Pearl Clams interaction
+        for (PearlClam pc : pearlClams) {
+            if (pc.hasPearl && Math.sin(pc.openCycle) > 0.35f && Math.hypot(diverX - pc.x, diverY - pc.y) < 120f) {
+                pc.hasPearl = false;
+                pc.respawnTimer = 22f;
+                state.coins += pc.rewardCoins;
+                state.pearlCount++;
+                state.save();
+                SoundManager.get(getContext()).playPearl();
+                addFX(pc.x, pc.y - 50f, "🦪 拾獲璀璨大珍珠！+" + pc.rewardCoins + " 貝殼金幣！", 0xFFE040FB, 34f);
+                if (listener != null) listener.onCoinsUpdated(state.coins);
+                return;
+            }
+        }
+
+        // Sequence 3: Check Catching Sleeping Fish nearby
+        for (RealisticFish f : fishes) {
+            if (f.isSleeping && Math.hypot(diverX - f.x, diverY - f.y) < 120f) {
+                // Rescue / collect the peaceful sleeping creature!
+                state.addCaughtFish(f.name, f.value + 35, f.weightKg);
+                SoundManager.get(getContext()).playUpgrade();
+                addFX(diverX, diverY - 60f, "🌟 溫柔活捉 " + f.name + "！", 0xFFFFD700, 34f);
+                addFX(diverX, diverY - 20f, "💖 獲得愛心活捉獎勵 +" + (f.value + 35) + " 金幣！", 0xFF00E676, 30f);
+                if (listener != null) listener.onCoinsUpdated(state.coins);
+
+                // Respawn
+                f.isSleeping = false;
+                f.sleepTimer = 0f;
+                f.x = (random.nextBoolean() ? 80f : worldWidth - 80f);
+                f.y = 350f + random.nextFloat() * (worldHeight - 700f);
+                return;
+            }
+        }
+
+        // Weapon Action: Fire based on weapon mode
+        if (currentWeapon == WeaponMode.HARPOON) {
+            if (harpoonState == HarpoonState.IDLE) {
+                fireHarpoon();
+            }
+        } else {
+            fireBubbleGun();
+        }
+    }
+
+    private void fireHarpoon() {
+        harpoonState = HarpoonState.FIRING;
+        boolean facingRight = targetFacingScale > 0;
+        harpoonStartX = diverX + (facingRight ? 55f : -55f);
+        harpoonStartY = diverY + 8f;
+        harpoonX = harpoonStartX;
+        harpoonY = harpoonStartY;
+        harpoonDist = 0f;
+        hookedFish = null;
+
+        float targetAngle;
+        if (targetFish != null) {
+            targetAngle = (float) Math.atan2(targetFish.y - harpoonStartY, targetFish.x - harpoonStartX);
+        } else {
+            targetAngle = facingRight ? diverAngle : (float) Math.PI - diverAngle;
+        }
+
+        float speed = 32f;
+        harpoonVx = (float) Math.cos(targetAngle) * speed;
+        harpoonVy = (float) Math.sin(targetAngle) * speed;
+
+        SoundManager.get(getContext()).playHarpoon();
+        addFX(harpoonStartX, harpoonStartY, "💨 魚叉發射！", 0xFFFFD700, 24f);
+    }
+
+    private void fireBubbleGun() {
+        boolean facingRight = targetFacingScale > 0;
+        float startX = diverX + (facingRight ? 55f : -55f);
+        float startY = diverY + 8f;
+
+        float targetAngle;
+        if (targetFish != null) {
+            targetAngle = (float) Math.atan2(targetFish.y - startY, targetFish.x - startX);
+        } else {
+            targetAngle = facingRight ? diverAngle : (float) Math.PI - diverAngle;
+        }
+
+        BubbleBullet bb = new BubbleBullet();
+        bb.x = startX;
+        bb.y = startY;
+        float speed = 25f;
+        bb.vx = (float) Math.cos(targetAngle) * speed;
+        bb.vy = (float) Math.sin(targetAngle) * speed;
+        bb.radius = 22f;
+        bb.lifeTime = 1.6f;
+        activeBubbles.add(bb);
+
+        SoundManager.get(getContext()).playBubbleGun();
+        addFX(startX, startY, "🫧 七彩催眠氣泡！", 0xFF00E5FF, 26f);
+    }
+
+    private void triggerDolphinRescue() {
+        bobo.isRescuing = true;
+        SoundManager.get(getContext()).playDolphin();
+        addFX(diverX, diverY - 50f, "🐬 海豚波波前來救援！準備起飛回水面！", 0xFFFF80AB, 36f);
+    }
+
+    private void surfaceAndReturn() {
+        int count = state.currentBasket.size();
+        if (listener != null) {
+            listener.onSurfaced(count);
+        }
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        long now = SystemClock.uptimeMillis();
+        float dt = Math.min((now - lastFrameTime) / 1000f, 0.05f);
+        lastFrameTime = now;
+
+        updatePhysics(dt, now);
+        renderScene(canvas, now);
+
+        if (isRunning) {
+            postInvalidateOnAnimation();
+        }
+    }
+
+    private void updatePhysics(float dt, long now) {
+        invincibleTimer = Math.max(0f, invincibleTimer - dt);
+        screenShakeTimer = Math.max(0f, screenShakeTimer - dt);
+        hurtFlashTimer = Math.max(0f, hurtFlashTimer - dt);
+
+        // Smooth horizontal facing interpolation
+        facingScale += (targetFacingScale - facingScale) * Math.min(1f, dt * 12f);
+
+        // Remote Watchdog
+        if (now - lastInputTime > 220) {
+            inputX = 0f;
+            inputY = 0f;
+        }
+
+        // Sequence 3: Dolphin rescue motion takes full control
+        if (bobo.isRescuing) {
+            // Move dolphin towards Dave, then launch to surface
+            float ddx = diverX - bobo.x;
+            float ddy = diverY - bobo.y;
+            float dist = (float) Math.hypot(ddx, ddy);
+            if (dist > 35f) {
+                bobo.x += (ddx / dist) * 550f * dt;
+                bobo.y += (ddy / dist) * 550f * dt;
+            } else {
+                // Locked together: Ascend to surface!
+                bobo.y -= 700f * dt;
+                diverX = bobo.x;
+                diverY = bobo.y - 30f;
+                diverAngle = -0.3f;
+
+                // Jet bubbles behind dolphin
+                if (random.nextInt(3) == 0) {
+                    Bubble b = new Bubble();
+                    b.x = bobo.x + (random.nextFloat() - 0.5f) * 20f;
+                    b.y = bobo.y + 40f;
+                    b.r = 8f + random.nextFloat() * 10f;
+                    b.speed = 4f;
+                    b.isDaveBreath = true;
+                    bubbles.add(b);
+                }
+
+                if (diverY <= 150f) {
+                    // Safe at Cobra Boat!
+                    bobo.isRescuing = false;
+                    bobo.active = false;
+                    state.coins += 50;
+                    state.save();
+                    SoundManager.get(getContext()).playUpgrade();
+                    addFX(diverX, diverY, "🎉 平安抵達水面！獲得海豚守護獎勵 +50 貝殼金幣！", 0xFF00E676, 36f);
+                    if (listener != null) listener.onCoinsUpdated(state.coins);
+                    surfaceAndReturn();
+                    return;
+                }
+            }
+        } else {
+            // Controlled swimming
+            float maxSpeed = 230f + (state.speedLevel - 1) * 35f;
+            float targetVx = inputX * maxSpeed;
+            float targetVy = inputY * maxSpeed;
+
+            boolean isMoving = (inputX != 0f || inputY != 0f);
+            float accelRate = isMoving ? 8.0f : 5.0f;
+            diverVx += (targetVx - diverVx) * Math.min(1f, dt * accelRate);
+            diverVy += (targetVy - diverVy) * Math.min(1f, dt * accelRate);
+
+            diverX += diverVx * dt;
+            diverY += diverVy * dt;
+
+            if (isMoving) {
+                swimCycle += dt * 8.5f;
+                float targetAngle = (float) Math.atan2(diverVy, Math.abs(diverVx));
+                diverAngle += (targetAngle - diverAngle) * 0.18f;
+            } else {
+                diverAngle *= 0.85f;
+                swimCycle += dt * 1.5f;
+            }
+
+            // Oxygen consumption
+            oxygen -= dt * 0.5f;
+            if (oxygen <= 0) {
+                oxygen = 0;
+                // Auto trigger dolphin rescue instead of game over!
+                triggerDolphinRescue();
+            }
+        }
+
+        // Breathing bubbles
+        breathTimer += dt;
+        if (breathTimer > 2.6f) {
+            breathTimer = 0f;
+            for (int k = 0; k < 3; k++) {
+                Bubble b = new Bubble();
+                b.x = diverX + (targetFacingScale > 0 ? 30f : -30f) + (random.nextFloat() - 0.5f) * 12f;
+                b.y = diverY - 12f;
+                b.r = 4f + random.nextFloat() * 6f;
+                b.speed = 2.2f + random.nextFloat() * 1.5f;
+                b.isDaveBreath = true;
+                bubbles.add(b);
+            }
+        }
+
+        // Clamp boundaries
+        if (diverX < 80f) diverX = 80f;
+        if (diverX > worldWidth - 80f) diverX = worldWidth - 80f;
+        if (diverY < 140f) diverY = 140f;
+        if (diverY > worldHeight - 110f) diverY = worldHeight - 110f;
+
+        // Camera follow
+        float targetCamX = diverX - getWidth() / 2f;
+        float targetCamY = diverY - getHeight() / 2f;
+        targetCamX = Math.max(0, Math.min(worldWidth - getWidth(), targetCamX));
+        targetCamY = Math.max(0, Math.min(worldHeight - getHeight(), targetCamY));
+        cameraX += (targetCamX - cameraX) * Math.min(1f, dt * 5.5f);
+        cameraY += (targetCamY - cameraY) * Math.min(1f, dt * 5.5f);
+
+        // Sequence 3: Friendly Dolphin Bobo AI
+        float oxPercent = oxygen / maxOxygen;
+        if (oxPercent < 0.25f && !bobo.isRescuing) {
+            bobo.active = true;
+            bobo.swimPhase += dt * 6f;
+            // Swim towards Dave peacefully
+            float bdx = (diverX + 100f) - bobo.x;
+            float bdy = (diverY + 50f) - bobo.y;
+            float bdist = (float) Math.hypot(bdx, bdy);
+            if (bdist > 60f) {
+                bobo.x += (bdx / bdist) * 220f * dt;
+                bobo.y += (bdy / bdist) * 220f * dt;
+                bobo.facing = (bdx > 0 ? 1f : -1f);
+            }
+            bobo.callSoundTimer += dt;
+            if (bobo.callSoundTimer > 5.5f) {
+                bobo.callSoundTimer = 0f;
+                SoundManager.get(getContext()).playDolphin();
+                addFX(bobo.x, bobo.y - 35f, "🐬 啾啾！海豚波波隨時支援！", 0xFFFF80AB, 26f);
+            }
+        }
+
+        // Sequence 2: Pearl Clams open cycle & respawn
+        for (PearlClam pc : pearlClams) {
+            pc.openCycle += dt * 1.5f;
+            if (!pc.hasPearl) {
+                pc.respawnTimer -= dt;
+                if (pc.respawnTimer <= 0f) {
+                    pc.hasPearl = true;
+                    addFX(pc.x, pc.y - 35f, "✨ 孕育出新的璀璨珍珠！", 0xFFE040FB, 24f);
+                }
+            }
+        }
+
+        // Sequence 2: Treasure Chests open animation
+        for (TreasureChest tc : treasureChests) {
+            if (tc.opened && tc.openProgress < 1.0f) {
+                tc.openProgress = Math.min(1.0f, tc.openProgress + dt * 2.5f);
+            }
+        }
+
+        // Marine Snow drifting
+        for (MarineSnow ms : planktonList) {
+            ms.x += ms.speedX;
+            ms.y += ms.speedY;
+            if (ms.y < 0) ms.y = worldHeight;
+            if (ms.x < 0) ms.x = worldWidth;
+            if (ms.x > worldWidth) ms.x = 0;
+        }
+
+        // Ambient Bubbles
+        Iterator<Bubble> bIt = bubbles.iterator();
+        while (bIt.hasNext()) {
+            Bubble b = bIt.next();
+            b.y -= b.speed * 60f * dt;
+            if (b.y < 70f) {
+                if (b.isDaveBreath) {
+                    bIt.remove();
+                    continue;
+                }
+                b.y = worldHeight - 50f;
+                b.x = random.nextFloat() * worldWidth;
+            }
+            if (b.isOxygenPickup && Math.hypot(diverX - b.x, diverY - b.y) < (b.r + 48f)) {
+                oxygen = Math.min(maxOxygen, oxygen + 25f);
+                SoundManager.get(getContext()).playBubble();
+                addFX(b.x, b.y, "🫧 +25 氧氣！", 0xFF00FFFF, 26f);
+                b.y = worldHeight - 50f;
+            }
+        }
+
+        // Sequence 3: Active Bubble Bullets update
+        Iterator<BubbleBullet> bbIt = activeBubbles.iterator();
+        while (bbIt.hasNext()) {
+            BubbleBullet bb = bbIt.next();
+            bb.lifeTime -= dt;
+            bb.x += bb.vx;
+            bb.y += bb.vy;
+
+            // Collision with fish: Envelop in sleep bubble!
+            boolean hit = false;
+            for (RealisticFish f : fishes) {
+                if (!f.isSleeping && Math.hypot(bb.x - f.x, bb.y - f.y) < (f.bodyHeight * 0.7f + bb.radius)) {
+                    f.isSleeping = true;
+                    f.sleepTimer = 8.0f;
+                    f.isAttacking = false;
+                    f.bubbleEncloseRadius = Math.max(f.length, f.bodyHeight) * 0.8f;
+                    hit = true;
+                    SoundManager.get(getContext()).playBubble();
+                    addFX(f.x, f.y - 45f, "💤 氣泡催眠成功！(游近按 OK 溫柔活捉)", 0xFF00E5FF, 32f);
+                    break;
+                }
+            }
+
+            if (hit || bb.lifeTime <= 0f) {
+                bbIt.remove();
+            }
+        }
+
+        // Realistic Fish AI
+        targetFish = null;
+        float nearestDist = state.getHarpoonRange();
+
+        for (RealisticFish f : fishes) {
+            // Sequence 3: Sleeping state
+            if (f.isSleeping) {
+                f.sleepTimer -= dt;
+                f.y -= 8f * dt; // Gently float upward inside protective bubble
+                if (f.sleepTimer <= 0f) {
+                    f.isSleeping = false;
+                    addFX(f.x, f.y - 30f, "☀️ 睡醒游走啦~", 0xFFFFD700, 22f);
+                }
+                continue;
+            }
+
+            boolean isSharkPredator = (f.species == RealisticFish.Species.REEF_SHARK || f.species == RealisticFish.Species.GREAT_SHARK);
+            float sdx = diverX - f.x;
+            float sdy = diverY - f.y;
+            float sDist = (float) Math.hypot(sdx, sdy);
+
+            if (isSharkPredator && sDist < 350f && !bobo.isRescuing) {
+                f.isAttacking = true;
+                f.facing = (sdx > 0 ? 1f : -1f);
+                float chargeSpeed = (f.species == RealisticFish.Species.GREAT_SHARK ? 145f : 110f);
+                f.x += (sdx / sDist) * chargeSpeed * dt;
+                f.y += (sdy / sDist) * chargeSpeed * dt;
+                f.swimPhase += dt * (f.swimSpeedMultiplier * 1.8f);
+
+                if (sDist < (f.bodyHeight * 0.65f + 32f)) {
+                    if (invincibleTimer <= 0f) {
+                        float loss = (f.species == RealisticFish.Species.GREAT_SHARK) ? 22f : 14f;
+                        oxygen = Math.max(0f, oxygen - loss);
+                        invincibleTimer = 1.6f;
+                        screenShakeTimer = 0.35f;
+                        hurtFlashTimer = 0.35f;
+
+                        diverVx += (sdx / sDist) * 220f;
+                        diverVy += (sdy / sDist) * 220f;
+
+                        SoundManager.get(getContext()).playHurt();
+                        addFX(diverX, diverY - 50f, "💥 受到鯊魚衝撞！-" + (int)loss + " 氧氣！", 0xFFFF1744, 34f);
+
+                        if (oxygen <= 0f) {
+                            triggerDolphinRescue();
+                        }
+                    }
+                }
+            } else {
+                f.isAttacking = false;
+                f.swimPhase += dt * f.swimSpeedMultiplier;
+                f.x += f.vx * 60f * dt;
+                f.y += (float) Math.sin(f.swimPhase) * 1.6f;
+
+                if (f.x < 70f) {
+                    f.x = 70f;
+                    f.vx = Math.abs(f.vx);
+                    f.facing = 1f;
+                } else if (f.x > worldWidth - 70f) {
+                    f.x = worldWidth - 70f;
+                    f.vx = -Math.abs(f.vx);
+                    f.facing = -1f;
+                }
+            }
+
+            if (f.species == RealisticFish.Species.BABY_SHARK && random.nextInt(200) == 0) {
+                addFX(f.x, f.y - 35f, "🎵 Doo Doo Doo~", 0xFFFFD166, 24f);
+            }
+
+            // Auto-aim target
+            float dx = f.x - diverX;
+            float dy = f.y - diverY;
+            boolean inFront = (targetFacingScale > 0 ? dx > 0 : dx < 0);
+            if (inFront) {
+                float dist = (float) Math.hypot(dx, dy);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    targetFish = f;
+                }
+            }
+        }
+
+        // Harpoon Update
+        float maxHarpoonRange = state.getHarpoonRange();
+        if (harpoonState == HarpoonState.FIRING) {
+            harpoonX += harpoonVx;
+            harpoonY += harpoonVy;
+            harpoonDist = (float) Math.hypot(harpoonX - harpoonStartX, harpoonY - harpoonStartY);
+
+            for (RealisticFish f : fishes) {
+                if (Math.hypot(harpoonX - f.x, harpoonY - f.y) < (f.bodyHeight * 0.65f)) {
+                    hookedFish = f;
+                    harpoonState = HarpoonState.REELING;
+                    addFX(f.x, f.y - 25f, "🎯 鎖定命中！收線回捲！", 0xFFFFD700, 32f);
+                    break;
+                }
+            }
+
+            if (harpoonState == HarpoonState.FIRING && harpoonDist >= maxHarpoonRange) {
+                harpoonState = HarpoonState.REELING;
+            }
+        } else if (harpoonState == HarpoonState.REELING) {
+            float hx = diverX + (targetFacingScale > 0 ? 45f : -45f);
+            float hy = diverY + 8f;
+            float dx = hx - harpoonX;
+            float dy = hy - harpoonY;
+            float dist = (float) Math.hypot(dx, dy);
+
+            if (dist < 40f) {
+                if (hookedFish != null) {
+                    state.addCaughtFish(hookedFish.name, hookedFish.value, hookedFish.weightKg);
+                    SoundManager.get(getContext()).playCatch();
+                    addFX(diverX, diverY - 65f, "⭐ 捕獲 " + hookedFish.name + " (" + hookedFish.weightKg + "kg)！", 0xFFFFD700, 34f);
+                    addFX(diverX, diverY - 25f, "💰 自動兌換金幣 +" + hookedFish.value + " 貝殼金幣！", 0xFF00E676, 30f);
+                    if (listener != null) listener.onCoinsUpdated(state.coins);
+
+                    hookedFish.x = (random.nextBoolean() ? 80f : worldWidth - 80f);
+                    hookedFish.y = 350f + random.nextFloat() * (worldHeight - 700f);
+                    hookedFish.vx = (random.nextBoolean() ? 1f : -1f) * (1.3f + random.nextFloat() * 1.8f);
+                    hookedFish.facing = hookedFish.vx > 0 ? 1f : -1f;
+                    hookedFish = null;
+                }
+                harpoonState = HarpoonState.IDLE;
+            } else {
+                float reelSpeed = 26f;
+                harpoonX += (dx / dist) * reelSpeed;
+                harpoonY += (dy / dist) * reelSpeed;
+                if (hookedFish != null) {
+                    hookedFish.x = harpoonX;
+                    hookedFish.y = harpoonY;
+                }
+            }
+        }
+
+        // FX
+        Iterator<GameFX> fxIt = effects.iterator();
+        while (fxIt.hasNext()) {
+            GameFX fx = fxIt.next();
+            float age = (now - fx.spawnTime) / 1000f;
+            if (age > 1.4f) {
+                fxIt.remove();
+                continue;
+            }
+            fx.y += fx.vy * dt;
+            fx.alpha = Math.max(0f, 1f - age / 1.4f);
+        }
+    }
+
+    private void addFX(float x, float y, String text, int color, float size) {
+        GameFX fx = new GameFX();
+        fx.x = x;
+        fx.y = y;
+        fx.vy = -45f;
+        fx.text = text;
+        fx.color = color;
+        fx.size = size;
+        fx.alpha = 1f;
+        fx.spawnTime = SystemClock.uptimeMillis();
+        effects.add(fx);
+    }
+
+    private void renderScene(Canvas canvas, long now) {
+        int w = getWidth();
+        int h = getHeight();
+        if (w == 0 || h == 0) return;
+
+        // Sequence 1: 4-Tier Depth Water Color Gradient (Turquoise -> Ocean -> Abyssal Dark)
+        Paint bgPaint = new Paint();
+        bgPaint.setShader(new LinearGradient(
+            0, -cameraY, 0, worldHeight - cameraY,
+            new int[]{ 0xFF4DC9E6, 0xFF0077BE, 0xFF003865, 0xFF001529, 0xFF000814, 0xFF000308 },
+            new float[]{ 0.0f, 0.18f, 0.45f, 0.70f, 0.88f, 1.0f },
+            Shader.TileMode.CLAMP
+        ));
+        canvas.drawRect(0, 0, w, h, bgPaint);
+
+        canvas.save();
+        float shakeX = (screenShakeTimer > 0f) ? (random.nextFloat() - 0.5f) * 16f : 0f;
+        float shakeY = (screenShakeTimer > 0f) ? (random.nextFloat() - 0.5f) * 16f : 0f;
+        canvas.translate(-cameraX + shakeX, -cameraY + shakeY);
+
+        // Parallax Distant Cliff Silhouettes
+        envPaint.setColor(0x1A001F3F);
+        envPaint.setStyle(Paint.Style.FILL);
+        Path distantCliff = new Path();
+        distantCliff.moveTo(0, 0);
+        distantCliff.lineTo(380f, 800f);
+        distantCliff.lineTo(250f, 1900f);
+        distantCliff.lineTo(480f, 3200f);
+        distantCliff.lineTo(320f, worldHeight);
+        distantCliff.lineTo(0, worldHeight);
+        distantCliff.close();
+        canvas.drawPath(distantCliff, envPaint);
+
+        // Shimmering Surface Sunlight God-Rays
+        float sway = (float) Math.sin(now / 1100.0) * 55f;
+        envPaint.setColor(0x15FFFFFF);
+        for (float rx = 220f; rx < worldWidth; rx += 520f) {
+            Path ray = new Path();
+            ray.moveTo(rx + sway * 0.4f, 0);
+            ray.lineTo(rx + 160f + sway, 750f);
+            ray.lineTo(rx + 90f + sway, 750f);
+            ray.lineTo(rx - 80f + sway * 0.4f, 0);
+            ray.close();
+            canvas.drawPath(ray, envPaint);
+        }
+
+        // Surface Cobra Boat
+        diverPaint.setColor(0xFFFF8C00);
+        canvas.drawRoundRect(600f, 75f, 1200f, 140f, 16f, 16f, diverPaint);
+        diverPaint.setColor(0xFFFFFFFF);
+        diverPaint.setTextSize(26f);
+        canvas.drawText("⛵ 柯布拉救援基地 (游回水面或按 [返回鍵] 升級裝備)", 630f, 118f, diverPaint);
+
+        // Sequence 1: Deep Abyssal Bioluminescent Crystals (Y > 3400)
+        for (GlowingCrystal gc : caveCrystals) {
+            renderGlowingCrystal(canvas, gc, now);
+        }
+
+        // Dave the Diver Kelp Forest (Background Layer)
+        for (KelpPlant kp : kelpForest) {
+            if (!kp.isBackground) continue;
+            renderKelp(canvas, kp, now, 0x88004D40);
+        }
+
+        // Sequence 2: Sunken Pirate Galleon Shipwreck
+        renderSunkenShipwreck(canvas, shipwreck, now);
+
+        // Natural Underwater Coral Reef Shelves & Formations
+        for (CoralShelf cs : coralShelves) {
+            renderCoralShelf(canvas, cs, now);
+        }
+
+        // Marine Snow / Plankton Particles
+        envPaint.setColor(0x35FFFFFF);
+        for (MarineSnow ms : planktonList) {
+            canvas.drawCircle(ms.x, ms.y, ms.r, envPaint);
+        }
+
+        // Dave the Diver Kelp Forest (Foreground Layer)
+        for (KelpPlant kp : kelpForest) {
+            if (kp.isBackground) continue;
+            renderKelp(canvas, kp, now, 0xD000796B);
+        }
+
+        // Sequence 2: Interactive Sunken Treasure Chests
+        for (TreasureChest tc : treasureChests) {
+            renderTreasureChest(canvas, tc, now);
+        }
+
+        // Sequence 2: Giant Pearl Clams
+        for (PearlClam pc : pearlClams) {
+            renderPearlClam(canvas, pc, now);
+        }
+
+        // Ambient Bubbles
+        for (Bubble b : bubbles) {
+            if (b.isOxygenPickup) {
+                diverPaint.setStyle(Paint.Style.STROKE);
+                diverPaint.setStrokeWidth(3.5f);
+                diverPaint.setColor(0xEE00FFFF);
+                canvas.drawCircle(b.x, b.y, b.r, diverPaint);
+                diverPaint.setStyle(Paint.Style.FILL);
+                diverPaint.setColor(0x6600E5FF);
+                canvas.drawCircle(b.x, b.y, b.r - 2f, diverPaint);
+            } else {
+                diverPaint.setStyle(Paint.Style.FILL);
+                diverPaint.setColor(b.isDaveBreath ? 0x99E0F7FA : 0x35FFFFFF);
+                canvas.drawCircle(b.x, b.y, b.r, diverPaint);
+            }
+        }
+
+        // Realistic Marine Fishes
+        for (RealisticFish f : fishes) {
+            renderRealisticFish(canvas, f, now);
+        }
+
+        // Sequence 3: Active Bubble Bullets
+        for (BubbleBullet bb : activeBubbles) {
+            diverPaint.setStyle(Paint.Style.FILL);
+            diverPaint.setColor(0x8800E5FF);
+            canvas.drawCircle(bb.x, bb.y, bb.radius, diverPaint);
+            diverPaint.setStyle(Paint.Style.STROKE);
+            diverPaint.setStrokeWidth(3.5f);
+            diverPaint.setColor(0xEEFFFFFF);
+            canvas.drawCircle(bb.x, bb.y, bb.radius, diverPaint);
+            diverPaint.setStyle(Paint.Style.FILL);
+            diverPaint.setColor(0xEEFFFFFF);
+            canvas.drawCircle(bb.x - bb.radius * 0.35f, bb.y - bb.radius * 0.35f, 4f, diverPaint);
+        }
+
+        // Sequence 3: Friendly Dolphin Bobo
+        if (bobo.active || bobo.isRescuing) {
+            renderFriendlyDolphin(canvas, bobo, now);
+        }
+
+        // Auto-Aim Targeting Reticle
+        if (targetFish != null && harpoonState == HarpoonState.IDLE) {
+            drawAimReticle(canvas, targetFish);
+        }
+
+        // Harpoon Rope & Spear
+        if (harpoonState != HarpoonState.IDLE) {
+            ropePaint.setColor(0xFFFFDF00);
+            ropePaint.setStrokeWidth(4.5f);
+            ropePaint.setStyle(Paint.Style.STROKE);
+            canvas.drawLine(harpoonStartX, harpoonStartY, harpoonX, harpoonY, ropePaint);
+
+            harpoonPaint.setColor(0xFFE0E0E0);
+            harpoonPaint.setStyle(Paint.Style.FILL);
+            canvas.drawCircle(harpoonX, harpoonY, 9f, harpoonPaint);
+        }
+
+        // Humanoid Scuba Dave Diver
+        renderDaveDiver(canvas, now);
+
+        // Floating FX
+        for (GameFX fx : effects) {
+            textPaint.setColor(fx.color);
+            textPaint.setAlpha((int) (fx.alpha * 255));
+            textPaint.setTextSize(fx.size);
+            textPaint.setFakeBoldText(true);
+            canvas.drawText(fx.text, fx.x, fx.y, textPaint);
+        }
+
+        canvas.restore();
+
+        // Modern Dave the Diver TV HUD
+        renderTVHUD(canvas, w, h);
+    }
+
+    // Sequence 1: Render Glowing Abyssal Crystals
+    private void renderGlowingCrystal(Canvas canvas, GlowingCrystal gc, long now) {
+        float pulse = 0.85f + (float) Math.sin((now / 1000.0) * gc.pulseSpeed) * 0.15f;
+        float r = gc.size * pulse;
+
+        // Glowing aura
+        lightPaint.setStyle(Paint.Style.FILL);
+        lightPaint.setColor(gc.color & 0x44FFFFFF);
+        canvas.drawCircle(gc.x, gc.y, r * 1.8f, lightPaint);
+
+        // Faceted crystal diamond shape
+        envPaint.setColor(gc.color);
+        Path crystal = new Path();
+        crystal.moveTo(gc.x, gc.y - r);
+        crystal.lineTo(gc.x + r * 0.6f, gc.y);
+        crystal.lineTo(gc.x, gc.y + r);
+        crystal.lineTo(gc.x - r * 0.6f, gc.y);
+        crystal.close();
+        canvas.drawPath(crystal, envPaint);
+
+        // Highlight
+        envPaint.setColor(0x88FFFFFF);
+        Path highlight = new Path();
+        highlight.moveTo(gc.x, gc.y - r);
+        highlight.lineTo(gc.x, gc.y);
+        highlight.lineTo(gc.x - r * 0.6f, gc.y);
+        highlight.close();
+        canvas.drawPath(highlight, envPaint);
+    }
+
+    // Sequence 2: Render Sunken Pirate Galleon Shipwreck
+    private void renderSunkenShipwreck(Canvas canvas, SunkenShipwreck sw, long now) {
+        // Ship Hull Base
+        envPaint.setColor(0xFF3E2723); // Dark antique wood
+        envPaint.setStyle(Paint.Style.FILL);
+
+        // Broken Bow & Hull Planks
+        Path hull = new Path();
+        hull.moveTo(sw.x, sw.y + sw.height);
+        hull.lineTo(sw.x + 60f, sw.y + 70f);
+        hull.lineTo(sw.x + sw.width - 50f, sw.y + 40f);
+        hull.lineTo(sw.x + sw.width, sw.y + sw.height);
+        hull.close();
+        canvas.drawPath(hull, envPaint);
+
+        // Hull Plank Lines & Green Sea Moss
+        envPaint.setColor(0xFF2E7D32); // Sea moss algae
+        canvas.drawRoundRect(sw.x + 50f, sw.y + sw.height - 25f, sw.x + sw.width - 40f, sw.y + sw.height, 8f, 8f, envPaint);
+
+        // Tall Broken Mast
+        envPaint.setColor(0xFF4E342E);
+        canvas.drawRect(sw.x + 280f, sw.y - 140f, sw.x + 300f, sw.y + 60f, envPaint);
+        // Crow's Nest
+        canvas.drawRoundRect(sw.x + 265f, sw.y - 160f, sw.x + 315f, sw.y - 135f, 6f, 6f, envPaint);
+
+        // Rigging ropes
+        ropePaint.setColor(0x888D6E63);
+        ropePaint.setStrokeWidth(2.5f);
+        canvas.drawLine(sw.x + 290f, sw.y - 140f, sw.x + 100f, sw.y + 70f, ropePaint);
+        canvas.drawLine(sw.x + 290f, sw.y - 140f, sw.x + sw.width - 80f, sw.y + 50f, ropePaint);
+
+        // Pirate Ship Helm (Wheel)
+        envPaint.setColor(0xFF8D6E63);
+        float hx = sw.x + 420f;
+        float hy = sw.y + 20f;
+        canvas.drawCircle(hx, hy, 24f, envPaint);
+        envPaint.setColor(0xFF3E2723);
+        canvas.drawCircle(hx, hy, 16f, envPaint);
+        for (int a = 0; a < 8; a++) {
+            float rad = a * 0.785f;
+            canvas.drawLine(hx + (float)Math.cos(rad) * 8f, hy + (float)Math.sin(rad) * 8f,
+                            hx + (float)Math.cos(rad) * 30f, hy + (float)Math.sin(rad) * 30f, envPaint);
+        }
+
+        // Heavy Pirate Iron Anchor on Seabed
+        envPaint.setColor(0xFF263238);
+        canvas.drawCircle(sw.x - 70f, sw.y + sw.height - 50f, 16f, envPaint);
+        canvas.drawRect(sw.x - 75f, sw.y + sw.height - 40f, sw.x - 65f, sw.y + sw.height, envPaint);
+        // Anchor Flukes
+        Path flukes = new Path();
+        flukes.moveTo(sw.x - 110f, sw.y + sw.height - 25f);
+        flukes.quadTo(sw.x - 70f, sw.y + sw.height + 15f, sw.x - 30f, sw.y + sw.height - 25f);
+        envPaint.setStyle(Paint.Style.STROKE);
+        envPaint.setStrokeWidth(9f);
+        canvas.drawPath(flukes, envPaint);
+        envPaint.setStyle(Paint.Style.FILL);
+
+        // Glowing Portholes
+        lightPaint.setColor(0x8800E5FF);
+        canvas.drawCircle(sw.x + 160f, sw.y + 110f, 15f, lightPaint);
+        canvas.drawCircle(sw.x + 260f, sw.y + 100f, 15f, lightPaint);
+        canvas.drawCircle(sw.x + 360f, sw.y + 90f, 15f, lightPaint);
+
+        // Text banner
+        textPaint.setColor(0xDDFFFFFF);
+        textPaint.setTextSize(22f);
+        canvas.drawText("⚓ 傳奇深海沉船 (藏有豐富秘寶)", sw.x + 170f, sw.y - 180f, textPaint);
+    }
+
+    // Sequence 2: Render Interactive Sunken Treasure Chest
+    private void renderTreasureChest(Canvas canvas, TreasureChest tc, long now) {
+        float dx = diverX - tc.x;
+        float dy = diverY - tc.y;
+        boolean inRange = (!tc.opened && Math.hypot(dx, dy) < 140f);
+
+        // Golden focus ring when Dave approaches
+        if (inRange) {
+            float pulse = (float) Math.sin(now / 150.0) * 8f;
+            diverPaint.setStyle(Paint.Style.STROKE);
+            diverPaint.setStrokeWidth(3.5f);
+            diverPaint.setColor(0xEEFFD700);
+            canvas.drawCircle(tc.x, tc.y, 65f + pulse, diverPaint);
+            diverPaint.setStyle(Paint.Style.FILL);
+
+            textPaint.setColor(0xFFFFD700);
+            textPaint.setTextSize(22f);
+            textPaint.setFakeBoldText(true);
+            canvas.drawText("🎁 按 [OK] 開啟！(+" + tc.rewardCoins + " 金幣)", tc.x - 110f, tc.y - 50f, textPaint);
+        }
+
+        // Chest Body
+        envPaint.setColor(tc.opened ? 0xFF5D4037 : 0xFF8D6E63);
+        envPaint.setStyle(Paint.Style.FILL);
+        canvas.drawRoundRect(tc.x - 42f, tc.y - 20f, tc.x + 42f, tc.y + 24f, 8f, 8f, envPaint);
+
+        // Brass Metal Straps
+        envPaint.setColor(0xFFFFB300);
+        canvas.drawRect(tc.x - 32f, tc.y - 20f, tc.x - 24f, tc.y + 24f, envPaint);
+        canvas.drawRect(tc.x + 24f, tc.y - 20f, tc.x + 32f, tc.y + 24f, envPaint);
+
+        // Chest Lid (Swings open when opened)
+        float lidLift = tc.openProgress * 28f;
+        canvas.save();
+        canvas.translate(tc.x, tc.y - 20f);
+        canvas.rotate(-tc.openProgress * 55f, -40f, 0f);
+        envPaint.setColor(0xFFA1887F);
+        canvas.drawRoundRect(-44f, -18f, 44f, 4f, 7f, 7f, envPaint);
+        envPaint.setColor(0xFFFFB300); // Lock latch
+        canvas.drawRoundRect(-8f, 0f, 8f, 10f, 3f, 3f, envPaint);
+        canvas.restore();
+
+        // Sparkling golden light fountain if open
+        if (tc.opened) {
+            lightPaint.setColor(0x88FFD700);
+            canvas.drawCircle(tc.x, tc.y - 12f, 22f, lightPaint);
+        }
+    }
+
+    // Sequence 2: Render Giant Pearl Clam
+    private void renderPearlClam(Canvas canvas, PearlClam pc, long now) {
+        float openRatio = (float) Math.sin(pc.openCycle); // [-1.0 to 1.0]
+        float openH = Math.max(0f, openRatio) * 36f;
+
+        // Bottom Shell
+        envPaint.setColor(0xFFB0BEC5);
+        Path botShell = new Path();
+        botShell.moveTo(pc.x - 38f, pc.y);
+        botShell.quadTo(pc.x, pc.y + 28f, pc.x + 38f, pc.y);
+        botShell.close();
+        canvas.drawPath(botShell, envPaint);
+
+        // Inside fleshy mantle
+        envPaint.setColor(0xFFFF80AB);
+        canvas.drawOval(new RectF(pc.x - 30f, pc.y - 6f, pc.x + 30f, pc.y + 14f), envPaint);
+
+        // Top Shell (Opens upward)
+        envPaint.setColor(0xFFCFD8DC);
+        Path topShell = new Path();
+        topShell.moveTo(pc.x - 38f, pc.y);
+        topShell.quadTo(pc.x, pc.y - openH - 24f, pc.x + 38f, pc.y);
+        topShell.close();
+        canvas.drawPath(topShell, envPaint);
+
+        // Radiant Pearl inside
+        if (pc.hasPearl && openH > 10f) {
+            float pearlPulse = (float) Math.sin(now / 180.0) * 3f;
+            lightPaint.setColor(0x66E040FB);
+            canvas.drawCircle(pc.x, pc.y - 4f, 18f + pearlPulse, lightPaint);
+
+            // Glistening pearl ball
+            diverPaint.setStyle(Paint.Style.FILL);
+            diverPaint.setColor(0xFFFFFFFF);
+            canvas.drawCircle(pc.x, pc.y - 4f, 12f, diverPaint);
+            diverPaint.setColor(0xFFE040FB);
+            canvas.drawCircle(pc.x, pc.y - 4f, 8f, diverPaint);
+            diverPaint.setColor(0xFFFFFFFF);
+            canvas.drawCircle(pc.x - 3f, pc.y - 7f, 3.5f, diverPaint);
+
+            // Proximity indicator
+            if (Math.hypot(diverX - pc.x, diverY - pc.y) < 130f) {
+                textPaint.setColor(0xFFE040FB);
+                textPaint.setTextSize(22f);
+                canvas.drawText("🦪 游近拾取大珍珠！(+90 金幣)", pc.x - 110f, pc.y - 45f, textPaint);
+            }
+        }
+    }
+
+    // Sequence 3: Render Friendly Dolphin Bobo
+    private void renderFriendlyDolphin(Canvas canvas, FriendlyDolphin d, long now) {
+        canvas.save();
+        canvas.translate(d.x, d.y);
+        canvas.scale(d.facing, 1.0f);
+
+        float tailWave = (float) Math.sin(d.swimPhase) * 14f;
+
+        // Friendly Pink/Blue Smooth Dolphin Body
+        diverPaint.setStyle(Paint.Style.FILL);
+        diverPaint.setColor(0xFF42A5F5); // Cheerful ocean cyan-blue
+        Path dBody = new Path();
+        dBody.moveTo(85f, 0); // Beak tip
+        dBody.quadTo(35f, -42f, -30f, -30f);
+        dBody.quadTo(-75f, -15f + tailWave * 0.5f, -110f + tailWave, 0);
+        dBody.quadTo(-75f, 15f + tailWave * 0.5f, -30f, 32f);
+        dBody.quadTo(35f, 40f, 85f, 0);
+        dBody.close();
+        canvas.drawPath(dBody, diverPaint);
+
+        // Soft rosy underbelly
+        diverPaint.setColor(0xFFFFE0B2);
+        Path dBelly = new Path();
+        dBelly.moveTo(70f, 0);
+        dBelly.quadTo(25f, 35f, -30f, 28f);
+        dBelly.lineTo(-30f, 0);
+        dBelly.close();
+        canvas.drawPath(dBelly, diverPaint);
+
+        // Curved Friendly Dorsal Fin
+        diverPaint.setColor(0xFF1E88E5);
+        Path dDorsal = new Path();
+        dDorsal.moveTo(-10f, -32f);
+        dDorsal.quadTo(-35f, -75f, -45f, -70f);
+        dDorsal.quadTo(-35f, -45f, -38f, -28f);
+        dDorsal.close();
+        canvas.drawPath(dDorsal, diverPaint);
+
+        // Horizontal Fluke Tail
+        diverPaint.setColor(0xFF1E88E5);
+        Path dTail = new Path();
+        dTail.moveTo(-110f + tailWave, 0);
+        dTail.lineTo(-135f + tailWave, -28f);
+        dTail.lineTo(-125f + tailWave, 0);
+        dTail.lineTo(-135f + tailWave, 28f);
+        dTail.close();
+        canvas.drawPath(dTail, diverPaint);
+
+        // Cheerful Smiling Eye & Rosy Cheek
+        diverPaint.setColor(0xFFFF80AB); // Rosy blush
+        canvas.drawCircle(45f, 8f, 7f, diverPaint);
+        diverPaint.setColor(Color.WHITE);
+        canvas.drawCircle(55f, -10f, 6.5f, diverPaint);
+        diverPaint.setColor(0xFF212121);
+        canvas.drawCircle(56f, -10f, 3.5f, diverPaint);
+        diverPaint.setColor(Color.WHITE);
+        canvas.drawCircle(57.5f, -11.5f, 1.5f, diverPaint);
+
+        // Friendly Smile mouth
+        ropePaint.setColor(0xFF1565C0);
+        ropePaint.setStrokeWidth(2.5f);
+        canvas.drawLine(72f, 2f, 60f, 6f, ropePaint);
+
+        canvas.restore();
+    }
+
+    private void renderKelp(Canvas canvas, KelpPlant kp, long now, int kelpColor) {
+        float wave = (float) Math.sin((now / 850.0) + kp.phaseOffset) * 36f;
+        envPaint.setColor(kelpColor);
+        envPaint.setStyle(Paint.Style.FILL);
+
+        // Central Kelp Stem
+        Path stem = new Path();
+        stem.moveTo(kp.x - 7f, kp.baseY);
+        stem.quadTo(kp.x + wave * 0.4f, kp.baseY - kp.height * 0.5f, kp.x + wave, kp.baseY - kp.height);
+        stem.lineTo(kp.x + wave + 9f, kp.baseY - kp.height);
+        stem.quadTo(kp.x + 9f + wave * 0.4f, kp.baseY - kp.height * 0.5f, kp.x + 9f, kp.baseY);
+        stem.close();
+        canvas.drawPath(stem, envPaint);
+
+        // Branching Leaf Fronds & Golden Air Vesicles
+        float stepH = kp.height / (kp.leafCount + 1);
+        for (int i = 1; i <= kp.leafCount; i++) {
+            float frondY = kp.baseY - (i * stepH);
+            float stemX = kp.x + (wave * (float)i / kp.leafCount);
+            boolean leftSide = (i % 2 == 0);
+            float sideSign = leftSide ? -1f : 1f;
+            float leafWave = (float) Math.sin((now / 650.0) + kp.phaseOffset + i * 0.8) * 14f;
+
+            envPaint.setColor(0xCCFFD54F);
+            canvas.drawCircle(stemX + sideSign * 7f, frondY, 5f, envPaint);
+
+            envPaint.setColor(kelpColor);
+            Path leaf = new Path();
+            leaf.moveTo(stemX, frondY);
+            leaf.quadTo(stemX + sideSign * 35f, frondY - 18f + leafWave * 0.5f, stemX + sideSign * 65f, frondY - 8f + leafWave);
+            leaf.quadTo(stemX + sideSign * 35f, frondY + 12f + leafWave * 0.5f, stemX, frondY + 4f);
+            leaf.close();
+            canvas.drawPath(leaf, envPaint);
+        }
+    }
+
+    private void renderCoralShelf(Canvas canvas, CoralShelf cs, long now) {
+        envPaint.setColor(0xFF263238);
+        envPaint.setStyle(Paint.Style.FILL);
+        canvas.drawRoundRect(cs.x, cs.y, cs.x + cs.width, cs.y + 24f, 10f, 10f, envPaint);
+        envPaint.setColor(0xFF37474F);
+        canvas.drawRect(cs.x + 8f, cs.y + 2f, cs.x + cs.width - 8f, cs.y + 12f, envPaint);
+
+        envPaint.setColor(cs.color);
+        if (cs.coralType == 0) {
+            for (float cx = cs.x + 20f; cx < cs.x + cs.width - 20f; cx += 32f) {
+                Path branch = new Path();
+                branch.moveTo(cx, cs.y);
+                branch.lineTo(cx - 10f, cs.y - 38f);
+                branch.lineTo(cx - 6f, cs.y - 42f);
+                branch.lineTo(cx, cs.y - 25f);
+                branch.lineTo(cx + 8f, cs.y - 44f);
+                branch.lineTo(cx + 12f, cs.y - 40f);
+                branch.lineTo(cx + 4f, cs.y);
+                branch.close();
+                canvas.drawPath(branch, envPaint);
+            }
+        } else if (cs.coralType == 1) {
+            for (int t = 0; t < 3; t++) {
+                float ty = cs.y - 12f - t * 16f;
+                float tw = cs.width * (0.8f - t * 0.15f);
+                float tx = cs.x + (cs.width - tw) / 2f;
+                canvas.drawOval(new RectF(tx, ty - 6f, tx + tw, ty + 6f), envPaint);
+            }
+        } else {
+            for (float cx = cs.x + 24f; cx < cs.x + cs.width - 24f; cx += 18f) {
+                float wave = (float) Math.sin((now / 500.0) + cx) * 8f;
+                canvas.drawLine(cx, cs.y, cx + wave, cs.y - 26f, envPaint);
+                canvas.drawCircle(cx + wave, cs.y - 26f, 3.5f, envPaint);
+            }
+        }
+    }
+
+    private void renderRealisticFish(Canvas canvas, RealisticFish f, long now) {
+        canvas.save();
+        canvas.translate(f.x, f.y);
+        canvas.scale(f.facing, 1.0f);
+
+        float wave = (float) Math.sin(f.swimPhase) * 6f;
+        float tailWave = (float) Math.sin(f.swimPhase - 1.2f) * 12f;
+
+        // Sequence 3: Render Sleeping Protective Bubble
+        if (f.isSleeping) {
+            diverPaint.setStyle(Paint.Style.FILL);
+            diverPaint.setColor(0x5500E5FF);
+            canvas.drawCircle(0, 0, f.bubbleEncloseRadius, diverPaint);
+            diverPaint.setStyle(Paint.Style.STROKE);
+            diverPaint.setStrokeWidth(4f);
+            diverPaint.setColor(0xEEFFFFFF);
+            canvas.drawCircle(0, 0, f.bubbleEncloseRadius, diverPaint);
+            diverPaint.setStyle(Paint.Style.FILL);
+            diverPaint.setColor(0xEEFFFFFF);
+            canvas.drawCircle(-f.bubbleEncloseRadius * 0.35f, -f.bubbleEncloseRadius * 0.35f, 5f, diverPaint);
+
+            // Floating cartoon Zzz
+            textPaint.setColor(0xFF00E5FF);
+            textPaint.setTextSize(26f);
+            textPaint.setFakeBoldText(true);
+            canvas.drawText("💤 呼嚕呼嚕... (活捉 +35 金幣)", -80f, -f.bubbleEncloseRadius - 15f, textPaint);
+        }
+
+        if (f.isAttacking && !f.isSleeping) {
+            textPaint.setColor(0xFFFF1744);
+            textPaint.setTextSize(24f);
+            textPaint.setFakeBoldText(true);
+            canvas.drawText("⚠️ 獵食衝刺！", -60f, -f.bodyHeight * 1.15f, textPaint);
+        }
+
+        fishPaint.setStyle(Paint.Style.FILL);
+
+        // Sequence 1: Deep-Sea Bioluminescent Anglerfish
+        if (f.species == RealisticFish.Species.ANGLERFISH) {
+            float halfL = f.length / 2f;
+            float halfH = f.bodyHeight / 2f;
+
+            // Bioluminescent Esca Lantern Glow
+            float pulse = 0.85f + (float) Math.sin(now / 150.0) * 0.15f;
+            float lureX = halfL * 0.95f;
+            float lureY = -halfH * 1.35f;
+
+            lightPaint.setStyle(Paint.Style.FILL);
+            lightPaint.setColor(0x8800E5FF);
+            canvas.drawCircle(lureX, lureY, 32f * pulse, lightPaint);
+            lightPaint.setColor(0xEEFFF59D);
+            canvas.drawCircle(lureX, lureY, 14f * pulse, lightPaint);
+
+            // Illicium (Curved Fishing Rod from forehead)
+            ropePaint.setColor(0xFF37474F);
+            ropePaint.setStrokeWidth(4f);
+            Path rod = new Path();
+            rod.moveTo(halfL * 0.25f, -halfH * 0.75f);
+            rod.quadTo(halfL * 0.65f, -halfH * 1.7f, lureX, lureY);
+            canvas.drawPath(rod, ropePaint);
+
+            // Round Deep-Sea Body
+            fishPaint.setColor(f.primaryColor);
+            canvas.drawOval(new RectF(-halfL, -halfH, halfL * 0.7f, halfH), fishPaint);
+
+            // Cavernous Jaw
+            fishPaint.setColor(0xFF1A237E);
+            Path jaw = new Path();
+            jaw.moveTo(halfL * 0.7f, -halfH * 0.1f);
+            jaw.lineTo(halfL * 0.15f, halfH * 0.65f);
+            jaw.lineTo(halfL * 0.65f, halfH * 0.75f);
+            jaw.close();
+            canvas.drawPath(jaw, fishPaint);
+
+            // Translucent Sharp Fangs
+            fishPaint.setColor(0xEEFFFFFF);
+            for (int t = 0; t < 5; t++) {
+                float tx = halfL * 0.22f + t * 9f;
+                canvas.drawLine(tx, halfH * 0.2f, tx + 4f, -halfH * 0.15f, fishPaint);
+                canvas.drawLine(tx + 4f, -halfH * 0.15f, tx + 8f, halfH * 0.2f, fishPaint);
+            }
+
+            // Glowing Green Abyssal Eye
+            fishPaint.setColor(0xFF76FF03);
+            canvas.drawCircle(halfL * 0.35f, -halfH * 0.35f, 7.5f, fishPaint);
+            fishPaint.setColor(Color.BLACK);
+            canvas.drawCircle(halfL * 0.36f, -halfH * 0.35f, 3.5f, fishPaint);
+
+            // Caudal Tail Fin
+            fishPaint.setColor(0xFF37474F);
+            Path aTail = new Path();
+            aTail.moveTo(-halfL, 0);
+            aTail.lineTo(-halfL - 35f + tailWave, -22f);
+            aTail.lineTo(-halfL - 25f + tailWave, 0);
+            aTail.lineTo(-halfL - 35f + tailWave, 22f);
+            aTail.close();
+            canvas.drawPath(aTail, fishPaint);
+
+        } else if (f.species == RealisticFish.Species.NEON_JELLYFISH) {
+            // Sequence 1: Neon Bioluminescent Jellyfish
+            float halfL = f.length / 2f;
+            float halfH = f.bodyHeight / 2f;
+            float pulse = (float) Math.sin(f.swimPhase * 1.5) * 0.18f;
+
+            // Radiant Outer Glow
+            lightPaint.setColor(0x5500E5FF);
+            canvas.drawCircle(0, -halfH * 0.2f, halfL * 1.25f, lightPaint);
+
+            // Translucent Neon Bell
+            fishPaint.setColor(f.primaryColor);
+            RectF dome = new RectF(-halfL * (1f + pulse), -halfH, halfL * (1f + pulse), halfH * 0.4f);
+            canvas.drawArc(dome, 180f, 180f, true, fishPaint);
+
+            // Shifting Rainbow Rim
+            fishPaint.setStyle(Paint.Style.STROKE);
+            fishPaint.setStrokeWidth(5f);
+            fishPaint.setColor(f.secondaryColor);
+            canvas.drawArc(dome, 180f, 180f, false, fishPaint);
+            fishPaint.setStyle(Paint.Style.FILL);
+
+            // Glowing Trailing Tentacles
+            for (int k = -3; k <= 3; k++) {
+                float tx = k * 9f;
+                float tWave = (float) Math.sin(f.swimPhase * 1.2f + k * 0.7) * 16f;
+                ropePaint.setColor(k % 2 == 0 ? 0xCCFF4081 : 0xCC76FF03);
+                ropePaint.setStrokeWidth(3f);
+                canvas.drawLine(tx, halfH * 0.2f, tx + tWave, halfH * 1.2f, ropePaint);
+            }
+
+        } else if (f.species == RealisticFish.Species.REEF_SHARK || f.species == RealisticFish.Species.GREAT_SHARK || f.species == RealisticFish.Species.BABY_SHARK) {
+            float halfL = f.length / 2f;
+            float halfH = f.bodyHeight / 2f;
+
+            // Shark Body
+            fishPaint.setColor(f.primaryColor);
+            Path sharkBody = new Path();
+            sharkBody.moveTo(halfL, 0);
+            sharkBody.quadTo(halfL * 0.35f, -halfH * 1.18f, -halfL * 0.4f + wave * 0.3f, -halfH * 0.65f);
+            sharkBody.quadTo(-halfL * 0.75f + wave * 0.6f, -halfH * 0.28f, -halfL + tailWave, 0);
+            sharkBody.quadTo(-halfL * 0.75f + wave * 0.6f, halfH * 0.28f, -halfL * 0.4f + wave * 0.3f, halfH * 0.65f);
+            sharkBody.quadTo(halfL * 0.35f, halfH * 1.18f, halfL, 0);
+            sharkBody.close();
+            canvas.drawPath(sharkBody, fishPaint);
+
+            // Underbelly
+            fishPaint.setColor(f.bellyColor);
+            Path belly = new Path();
+            belly.moveTo(halfL * 0.88f, 0);
+            belly.quadTo(halfL * 0.25f, halfH * 1.05f, -halfL * 0.4f + wave * 0.3f, halfH * 0.45f);
+            belly.lineTo(-halfL * 0.4f + wave * 0.3f, 0);
+            belly.close();
+            canvas.drawPath(belly, fishPaint);
+
+            // Dorsal Fin
+            fishPaint.setColor(f.primaryColor);
+            Path dorsal = new Path();
+            dorsal.moveTo(halfL * 0.12f, -halfH * 0.85f);
+            dorsal.lineTo(-halfL * 0.14f, -halfH * 1.95f);
+            dorsal.lineTo(-halfL * 0.02f, -halfH * 0.65f);
+            dorsal.close();
+            canvas.drawPath(dorsal, fishPaint);
+
+            if (f.species == RealisticFish.Species.REEF_SHARK) {
+                fishPaint.setColor(0xFF1A1A1A);
+                Path dTip = new Path();
+                dTip.moveTo(-halfL * 0.05f, -halfH * 1.55f);
+                dTip.lineTo(-halfL * 0.14f, -halfH * 1.95f);
+                dTip.lineTo(-halfL * 0.09f, -halfH * 1.45f);
+                dTip.close();
+                canvas.drawPath(dTip, fishPaint);
+            }
+
+            // Tail Fin
+            fishPaint.setColor(f.primaryColor);
+            Path tail = new Path();
+            tail.moveTo(-halfL + tailWave, 0);
+            tail.lineTo(-halfL * 1.38f + tailWave * 1.3f, -halfH * 1.25f);
+            tail.lineTo(-halfL * 1.18f + tailWave * 1.1f, -halfH * 0.2f);
+            tail.lineTo(-halfL * 1.32f + tailWave * 1.3f, halfH * 0.85f);
+            tail.close();
+            canvas.drawPath(tail, fishPaint);
+
+            // Gill Slits
+            fishPaint.setColor(0x88212121);
+            fishPaint.setStrokeWidth(2f);
+            fishPaint.setStyle(Paint.Style.STROKE);
+            for (int g = 0; g < 5; g++) {
+                float gx = halfL * 0.36f - g * 5f;
+                canvas.drawLine(gx, -halfH * 0.22f, gx - 2.5f, halfH * 0.22f, fishPaint);
+            }
+            fishPaint.setStyle(Paint.Style.FILL);
+
+            // Eye
+            fishPaint.setColor(Color.WHITE);
+            canvas.drawCircle(halfL * 0.72f, -halfH * 0.22f, 7f, fishPaint);
+            fishPaint.setColor(Color.BLACK);
+            canvas.drawCircle(halfL * 0.74f, -halfH * 0.22f, 3.8f, fishPaint);
+
+        } else if (f.species == RealisticFish.Species.JELLYFISH) {
+            float halfL = f.length / 2f;
+            float halfH = f.bodyHeight / 2f;
+            float pulse = (float) Math.sin(f.swimPhase * 1.5) * 0.15f;
+
+            fishPaint.setColor(f.primaryColor);
+            RectF dome = new RectF(-halfL * (1f + pulse), -halfH, halfL * (1f + pulse), halfH * 0.35f);
+            canvas.drawArc(dome, 180f, 180f, true, fishPaint);
+
+            for (int k = -2; k <= 2; k++) {
+                float tx = k * 11f;
+                float tWave = (float) Math.sin(f.swimPhase + k) * 12f;
+                ropePaint.setColor(0x99BA68C8);
+                ropePaint.setStrokeWidth(2.5f);
+                canvas.drawLine(tx, halfH * 0.2f, tx + tWave, halfH * 1.1f, ropePaint);
+            }
+
+        } else {
+            // General Coral Fish (Clownfish, Blue Tang, Yellow Tang, Tuna)
+            float halfL = f.length / 2f;
+            float halfH = f.bodyHeight / 2f;
+
+            fishPaint.setColor(f.primaryColor);
+            Path fishBody = new Path();
+            fishBody.moveTo(halfL, 0);
+            fishBody.quadTo(0, -halfH * 1.15f, -halfL * 0.6f + wave * 0.4f, -halfH * 0.3f);
+            fishBody.lineTo(-halfL + tailWave, 0);
+            fishBody.lineTo(-halfL * 0.6f + wave * 0.4f, halfH * 0.3f);
+            fishBody.quadTo(0, halfH * 1.15f, halfL, 0);
+            fishBody.close();
+            canvas.drawPath(fishBody, fishPaint);
+
+            // Tail Fin
+            fishPaint.setColor(f.secondaryColor);
+            Path tail = new Path();
+            tail.moveTo(-halfL * 0.6f + wave * 0.4f, 0);
+            tail.lineTo(-halfL * 1.25f + tailWave, -halfH * 0.7f);
+            tail.lineTo(-halfL * 1.1f + tailWave, 0);
+            tail.lineTo(-halfL * 1.25f + tailWave, halfH * 0.7f);
+            tail.close();
+            canvas.drawPath(tail, fishPaint);
+
+            // White stripes for Clownfish
+            if (f.species == RealisticFish.Species.CLOWNFISH) {
+                fishPaint.setColor(Color.WHITE);
+                canvas.drawRect(halfL * 0.15f, -halfH * 0.75f, halfL * 0.35f, halfH * 0.75f, fishPaint);
+                canvas.drawRect(-halfL * 0.2f, -halfH * 0.6f, -halfL * 0.05f, halfH * 0.6f, fishPaint);
+            }
+
+            // Eye
+            fishPaint.setColor(Color.WHITE);
+            canvas.drawCircle(halfL * 0.62f, -halfH * 0.25f, 6.5f, fishPaint);
+            fishPaint.setColor(Color.BLACK);
+            canvas.drawCircle(halfL * 0.64f, -halfH * 0.25f, 3.2f, fishPaint);
+        }
+
+        canvas.restore();
+    }
+
+    private void renderDaveDiver(Canvas canvas, long now) {
+        if (invincibleTimer > 0f && ((int)(invincibleTimer * 10f) % 2 == 0)) {
+            return;
+        }
+
+        canvas.save();
+        canvas.translate(diverX, diverY);
+        canvas.scale(facingScale, 1.0f);
+        canvas.rotate((float) Math.toDegrees(diverAngle));
+
+        // Headlamp Flashlight Light Cone
+        float lightRadius = state.getLightRadius();
+        lightPaint.setStyle(Paint.Style.FILL);
+        lightPaint.setShader(new RadialGradient(
+            45f, 0f, lightRadius,
+            new int[]{ 0x77FFFDE7, 0x22FFE082, 0x00000000 },
+            new float[]{ 0.0f, 0.55f, 1.0f },
+            Shader.TileMode.CLAMP
+        ));
+        Path lightCone = new Path();
+        lightCone.moveTo(42f, -8f);
+        lightCone.lineTo(lightRadius, -lightRadius * 0.35f);
+        lightCone.lineTo(lightRadius, lightRadius * 0.35f);
+        lightCone.close();
+        canvas.drawPath(lightCone, lightPaint);
+        lightPaint.setShader(null);
+
+        // Legs & Flutter kick
+        float kick1 = (float) Math.sin(swimCycle) * 16f;
+        float kick2 = (float) Math.sin(swimCycle + Math.PI) * 16f;
+
+        diverPaint.setColor(0xFF003865);
+        canvas.drawRoundRect(-32f, -14f + kick1 * 0.3f, -14f, -4f + kick1 * 0.3f, 4f, 4f, diverPaint);
+        diverPaint.setColor(0xFFFF6D00);
+        Path fin1 = new Path();
+        fin1.moveTo(-32f, -9f + kick1 * 0.3f);
+        fin1.lineTo(-68f, -18f + kick1);
+        fin1.lineTo(-52f, -4f + kick1 * 0.5f);
+        fin1.close();
+        canvas.drawPath(fin1, diverPaint);
+
+        diverPaint.setColor(0xFF004D80);
+        canvas.drawRoundRect(-30f, 4f + kick2 * 0.3f, -12f, 14f + kick2 * 0.3f, 4f, 4f, diverPaint);
+        diverPaint.setColor(0xFFFF8500);
+        Path fin2 = new Path();
+        fin2.moveTo(-30f, 9f + kick2 * 0.3f);
+        fin2.lineTo(-68f, 18f + kick2);
+        fin2.lineTo(-52f, 4f + kick2 * 0.5f);
+        fin2.close();
+        canvas.drawPath(fin2, diverPaint);
+
+        // Scuba Twin Tanks
+        diverPaint.setColor(0xFFFFD166);
+        canvas.drawRoundRect(-36f, -22f, -18f, 22f, 7f, 7f, diverPaint);
+        diverPaint.setColor(0xFF263238);
+        canvas.drawRect(-34f, -6f, -20f, 6f, diverPaint);
+
+        // Dave Wetsuit Torso
+        diverPaint.setColor(0xFF0077BE);
+        canvas.drawRoundRect(-24f, -24f, 26f, 24f, 16f, 16f, diverPaint);
+
+        // Mask & Hood
+        diverPaint.setColor(0xFF003865);
+        canvas.drawCircle(18f, -2f, 18f, diverPaint);
+        diverPaint.setColor(0xFFFFD166);
+        canvas.drawRoundRect(14f, -14f, 36f, 10f, 6f, 6f, diverPaint);
+        diverPaint.setColor(0xFF00E5FF);
+        canvas.drawCircle(25f, -2f, 7f, diverPaint);
+        diverPaint.setColor(Color.WHITE);
+        canvas.drawCircle(23f, -4f, 2.5f, diverPaint);
+
+        // Weapon in hand: Harpoon or Bubble Gun
+        if (currentWeapon == WeaponMode.HARPOON) {
+            diverPaint.setColor(0xFF455A64);
+            canvas.drawRoundRect(18f, 5f, 55f, 14f, 3f, 3f, diverPaint);
+            diverPaint.setColor(0xFFB0BEC5);
+            canvas.drawRect(52f, 7f, 64f, 12f, diverPaint);
+        } else {
+            // Cute Bubble Gun (Bright cyan/pink water blaster)
+            diverPaint.setColor(0xFF00E5FF);
+            canvas.drawRoundRect(18f, 3f, 52f, 15f, 5f, 5f, diverPaint);
+            diverPaint.setColor(0xFFFF4081);
+            canvas.drawCircle(46f, 9f, 6f, diverPaint);
+        }
+
+        canvas.restore();
+    }
+
+    private void drawAimReticle(Canvas canvas, RealisticFish target) {
+        ropePaint.setColor(currentWeapon == WeaponMode.HARPOON ? 0x88FFD700 : 0x8800E5FF);
+        ropePaint.setStrokeWidth(2.5f);
+        canvas.drawLine(diverX + (targetFacingScale > 0 ? 50f : -50f), diverY + 8f, target.x, target.y, ropePaint);
+
+        harpoonPaint.setStyle(Paint.Style.STROKE);
+        harpoonPaint.setColor(currentWeapon == WeaponMode.HARPOON ? 0xFFFFD700 : 0xFF00E5FF);
+        harpoonPaint.setStrokeWidth(3.5f);
+        float r = target.bodyHeight * 0.75f;
+        canvas.drawCircle(target.x, target.y, r, harpoonPaint);
+
+        canvas.drawLine(target.x - r - 12f, target.y, target.x - r + 8f, target.y, harpoonPaint);
+        canvas.drawLine(target.x + r - 8f, target.y, target.x + r + 12f, target.y, harpoonPaint);
+        canvas.drawLine(target.x, target.y - r - 12f, target.x, target.y - r + 8f, harpoonPaint);
+        canvas.drawLine(target.x, target.y + r - 8f, target.x, target.y + r + 12f, harpoonPaint);
+
+        textPaint.setColor(currentWeapon == WeaponMode.HARPOON ? 0xFFFFDF00 : 0xFF00E5FF);
+        textPaint.setTextSize(22f);
+        String actionPrompt = currentWeapon == WeaponMode.HARPOON ? "🎯 鎖定 [按 OK 發射魚叉]" : "🫧 鎖定 [按 OK 發射催眠氣泡]";
+        canvas.drawText(actionPrompt, target.x - 70f, target.y - r - 16f, textPaint);
+    }
+
+    private void renderTVHUD(Canvas canvas, int w, int h) {
+        if (hurtFlashTimer > 0f) {
+            hudPaint.setColor(0x3DFF0000);
+            canvas.drawRect(0, 0, w, h, hudPaint);
+        }
+
+        float oxPercent = Math.max(0f, oxygen / maxOxygen);
+
+        // Low O2 Pulsing Red Warning Vignette
+        if (oxPercent < 0.25f && !bobo.isRescuing) {
+            int pulseAlpha = (int)(45 + Math.sin(SystemClock.uptimeMillis() / 150.0) * 35);
+            hudPaint.setColor(Color.argb(pulseAlpha, 255, 0, 0));
+            canvas.drawRect(0, 0, w, 14, hudPaint);
+            canvas.drawRect(0, h - 14, w, h, hudPaint);
+            canvas.drawRect(0, 0, 14, h, hudPaint);
+            canvas.drawRect(w - 14, 0, w, h, hudPaint);
+
+            // Sequence 3: Big Friendly Dolphin Rescue Alert Banner!
+            hudPaint.setColor(0xEEFF4081);
+            canvas.drawRoundRect(w * 0.25f, 15f, w * 0.75f, 75f, 16f, 16f, hudPaint);
+            textPaint.setColor(Color.WHITE);
+            textPaint.setTextSize(24f);
+            textPaint.setFakeBoldText(true);
+            textPaint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("🐬 [按 OK 呼叫海豚波波救援！] 平安載回水面！", w / 2f, 52f, textPaint);
+            textPaint.setTextAlign(Paint.Align.LEFT);
+        }
+
+        // Top Left: Big O2 Gauge
+        hudPaint.setStyle(Paint.Style.FILL);
+        hudPaint.setColor(0xDD001428);
+        canvas.drawRoundRect(40f, 75f, 410f, 160f, 20f, 20f, hudPaint);
+
+        int oxColor = oxPercent > 0.5f ? 0xFF00E676 : (oxPercent > 0.25f ? 0xFFFFD166 : 0xFFFF1744);
+        hudPaint.setColor(0x40FFFFFF);
+        canvas.drawRoundRect(55f, 115f, 395f, 142f, 9f, 9f, hudPaint);
+        hudPaint.setColor(oxColor);
+        canvas.drawRoundRect(55f, 115f, 55f + 340f * oxPercent, 142f, 9f, 9f, hudPaint);
+
+        textPaint.setColor(Color.WHITE);
+        textPaint.setTextSize(22f);
+        textPaint.setFakeBoldText(true);
+        if (oxPercent < 0.25f) {
+            textPaint.setColor(0xFFFF5252);
+            canvas.drawText("⚠️ 氧氣低: " + (int)(oxPercent * 100) + "% (可呼叫海豚!)", 55f, 108f, textPaint);
+        } else {
+            canvas.drawText("🤿 O₂ 氧氣存量: " + (int)(oxPercent * 100) + "%", 55f, 108f, textPaint);
+        }
+
+        // Top Center: Current Weapon Switch Badge (Sequence 3)
+        hudPaint.setColor(0xDD002244);
+        canvas.drawRoundRect(w / 2f - 180f, 75f, w / 2f + 180f, 145f, 18f, 18f, hudPaint);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setTextSize(20f);
+        if (currentWeapon == WeaponMode.HARPOON) {
+            textPaint.setColor(0xFFFFD700);
+            canvas.drawText("🎯 武器：魚叉槍 [按 ▲ 切換氣泡槍]", w / 2f, 118f, textPaint);
+        } else {
+            textPaint.setColor(0xFF00E5FF);
+            canvas.drawText("🫧 武器：氣泡催眠槍 [按 ▲ 切換魚叉]", w / 2f, 118f, textPaint);
+        }
+        textPaint.setTextAlign(Paint.Align.LEFT);
+
+        // Top Right: Water Depth & Realtime Coins (Sequence 1 Depth Zones)
+        hudPaint.setColor(0xCC001428);
+        canvas.drawRoundRect(w - 440f, 75f, w - 40f, 160f, 18f, 18f, hudPaint);
+
+        int depthMeters = (int) Math.max(0, (diverY - 140f) / 10f);
+        String zone;
+        if (depthMeters < 75) zone = "(陽光珊瑚礁)";
+        else if (depthMeters < 200) zone = "(中層巨藻林)";
+        else if (depthMeters < 340) zone = "(沉船海溝)";
+        else zone = "(深淵發光洞穴)";
+
+        textPaint.setColor(0xFF48CAE4);
+        textPaint.setTextSize(21f);
+        canvas.drawText("🌊 水深: " + depthMeters + " 米 " + zone, w - 420f, 110f, textPaint);
+
+        textPaint.setColor(0xFFFFD700);
+        canvas.drawText("💰 金幣: " + state.coins + " 貝殼金幣", w - 420f, 142f, textPaint);
+
+        // Bottom Remote Guide
+        hudPaint.setColor(0xE6000F1F);
+        canvas.drawRoundRect(w * 0.10f, h - 72f, w * 0.90f, h - 14f, 16f, 16f, hudPaint);
+
+        textPaint.setColor(Color.WHITE);
+        textPaint.setTextSize(20f);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [▲ 上鍵] 切換武器 | [OK 鍵] 發射 / 開寶箱 / 拾珍珠 | [返回] 升級", w / 2f, h - 36f, textPaint);
+        textPaint.setTextAlign(Paint.Align.LEFT);
+    }
+}

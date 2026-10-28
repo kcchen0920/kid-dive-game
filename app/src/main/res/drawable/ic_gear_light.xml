@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- Bubble Background Circle -->
+    <path
+        android:fillColor="#26FFEA00"
+        android:pathData="M60,10 A50,50 0 1,0 60,110 A50,50 0 1,0 60,10 Z"/>
+    <!-- Yellow Light Beam spreading out -->
+    <path
+        android:fillColor="#66FFF9C4"
+        android:pathData="M66,60 L110,24 L110,96 Z"/>
+    <!-- Flashlight Housing Body -->
+    <path
+        android:fillColor="#263238"
+        android:pathData="M18,48 L50,48 L56,40 L68,40 L68,80 L56,80 L50,72 L18,72 Z"/>
+    <!-- Lamp Lens Rim -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M64,38 L72,38 L72,82 L64,82 Z"/>
+    <!-- Bright Bulb -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M70,52 A8,8 0 1,0 70,68 A8,8 0 1,0 70,52 Z"/>
+    <!-- Grip Ribs -->
+    <path
+        android:fillColor="#37474F"
+        android:pathData="M24,46 L28,46 L28,74 L24,74 Z M34,46 L38,46 L38,74 L34,74 Z M44,46 L48,46 L48,74 L44,74 Z"/>
+    <!-- Gleam Rays -->
+    <path
+        android:strokeColor="#FFEE58"
+        android:strokeWidth="3"
+        android:pathData="M76,34 L88,24 M80,60 L102,60 M76,86 L88,96"/>
+</vector>

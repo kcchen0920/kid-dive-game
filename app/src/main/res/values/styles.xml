@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.BabyShark" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@color/deep_blue</item>
+        <item name="colorPrimary">@color/ocean_blue</item>
+        <item name="colorSecondary">@color/shark_yellow</item>
+    </style>
+</resources>

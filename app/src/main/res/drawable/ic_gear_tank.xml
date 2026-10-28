@@ -1,0 +1,46 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- Bubble Background Circle -->
+    <path
+        android:fillColor="#2600E5FF"
+        android:pathData="M60,10 A50,50 0 1,0 60,110 A50,50 0 1,0 60,10 Z"/>
+    <!-- Yellow Scuba Cylinder Body -->
+    <path
+        android:fillColor="#FFD166"
+        android:pathData="M42,38 C42,28 78,28 78,38 L78,92 C78,98 42,98 42,92 Z"/>
+    <!-- Tank Neck & Valve -->
+    <path
+        android:fillColor="#37474F"
+        android:pathData="M52,24 L68,24 L68,32 L52,32 Z"/>
+    <path
+        android:fillColor="#78909C"
+        android:pathData="M56,18 L64,18 L64,24 L56,24 Z"/>
+    <!-- Valve Knob -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M68,18 L76,18 L76,22 L68,22 Z"/>
+    <!-- Black Straps -->
+    <path
+        android:fillColor="#263238"
+        android:pathData="M42,50 L78,50 L78,56 L42,56 Z"/>
+    <path
+        android:fillColor="#263238"
+        android:pathData="M42,74 L78,74 L78,80 L42,80 Z"/>
+    <!-- Air Gauge Circle -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,65 A9,9 0 1,0 60,83 A9,9 0 1,0 60,65 Z"/>
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M60,69 A5,5 0 1,0 60,79 A5,5 0 1,0 60,69 Z"/>
+    <!-- Little Air Bubbles -->
+    <path
+        android:fillColor="#80FFFFFF"
+        android:pathData="M84,30 A4,4 0 1,0 84,38 A4,4 0 1,0 84,30 Z"/>
+    <path
+        android:fillColor="#80FFFFFF"
+        android:pathData="M88,18 A3,3 0 1,0 88,24 A3,3 0 1,0 88,18 Z"/>
+</vector>

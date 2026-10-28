@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Baby Shark Diver</string>
+    <string name="play_game">潛水捕魚探險 (Diver Game)</string>
+    <string name="watch_videos">鯊魚兒歌與影院 (Song Theater)</string>
+    <string name="fish_shop">海港小舖與裝備 (Fish Market &amp; Upgrades)</string>
+    <string name="coins_label">貝殼金幣: </string>
+    <string name="dive_depth">目前水深: </string>
+    <string name="oxygen_label">氧氣存量: </string>
+</resources>

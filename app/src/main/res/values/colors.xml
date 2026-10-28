@@ -1,0 +1,12 @@
+<resources>
+    <color name="ocean_blue">#0077BE</color>
+    <color name="deep_blue">#002B49</color>
+    <color name="shallow_blue">#48CAE4</color>
+    <color name="shark_yellow">#FFD166</color>
+    <color name="coral_pink">#EF476F</color>
+    <color name="seaweed_green">#06D6A0</color>
+    <color name="card_bg">#20FFFFFF</color>
+    <color name="card_focused">#60FFD166</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+</resources>

@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="#005B94"
+        android:pathData="M0,0h320v180h-320z"/>
+    <!-- Ocean Wave -->
+    <path
+        android:fillColor="#0077BE"
+        android:pathData="M0,60 Q80,40 160,60 T320,60 L320,180 L0,180 Z"/>
+    <!-- Yellow Shark Body -->
+    <path
+        android:fillColor="#FFD166"
+        android:pathData="M110,90 C110,70 160,60 210,75 C230,82 245,90 245,90 C245,90 230,98 210,105 C160,120 110,110 110,90 Z"/>
+    <!-- Shark Fin -->
+    <path
+        android:fillColor="#FFC338"
+        android:pathData="M160,65 L175,45 L180,67 Z"/>
+</vector>

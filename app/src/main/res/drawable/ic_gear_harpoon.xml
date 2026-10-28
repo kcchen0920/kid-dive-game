@@ -1,0 +1,40 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- Bubble Background Circle -->
+    <path
+        android:fillColor="#26FFD700"
+        android:pathData="M60,10 A50,50 0 1,0 60,110 A50,50 0 1,0 60,10 Z"/>
+    <!-- Diagonal Spear Gun Barrel -->
+    <path
+        android:fillColor="#37474F"
+        android:pathData="M24,86 L86,24 L94,32 L32,94 Z"/>
+    <!-- Handle & Grip -->
+    <path
+        android:fillColor="#8D6E63"
+        android:pathData="M28,82 L40,70 L34,102 L22,96 Z"/>
+    <!-- Trigger -->
+    <path
+        android:strokeColor="#FFD700"
+        android:strokeWidth="3"
+        android:pathData="M38,76 Q42,80 38,84"/>
+    <!-- Spear Tip (Stainless Steel Point) -->
+    <path
+        android:fillColor="#ECEFF1"
+        android:pathData="M84,26 L98,12 L108,22 L94,36 Z"/>
+    <!-- Spear Barb -->
+    <path
+        android:fillColor="#CFD8DC"
+        android:pathData="M98,12 L108,22 L100,26 Z"/>
+    <!-- Golden Energy Coil -->
+    <path
+        android:strokeColor="#FFD600"
+        android:strokeWidth="3.5"
+        android:pathData="M48,62 L56,54 M58,52 L66,44 M68,42 L76,34"/>
+    <!-- Target Spark -->
+    <path
+        android:fillColor="#FFEA00"
+        android:pathData="M104,10 L107,15 L112,18 L107,21 L104,26 L101,21 L96,18 L101,15 Z"/>
+</vector>

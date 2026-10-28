@@ -1,0 +1,40 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- Bubble Background Circle -->
+    <path
+        android:fillColor="#26FF6D00"
+        android:pathData="M60,10 A50,50 0 1,0 60,110 A50,50 0 1,0 60,10 Z"/>
+    <!-- Left Fin Blade -->
+    <path
+        android:fillColor="#FF6D00"
+        android:pathData="M38,24 L52,24 L44,88 C44,96 22,96 22,88 Z"/>
+    <path
+        android:fillColor="#FF9E80"
+        android:pathData="M34,42 L42,42 L36,80 L28,80 Z"/>
+    <!-- Right Fin Blade -->
+    <path
+        android:fillColor="#FF9100"
+        android:pathData="M68,24 L82,24 L98,88 C98,96 76,96 76,88 Z"/>
+    <path
+        android:fillColor="#FFD180"
+        android:pathData="M76,42 L84,42 L92,80 L84,80 Z"/>
+    <!-- Foot Pockets -->
+    <path
+        android:fillColor="#263238"
+        android:pathData="M36,20 L54,20 L52,36 L38,36 Z"/>
+    <path
+        android:fillColor="#263238"
+        android:pathData="M66,20 L84,20 L82,36 L68,36 Z"/>
+    <!-- Water Speed Waves -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3"
+        android:pathData="M16,56 Q24,52 32,56"/>
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3"
+        android:pathData="M90,56 Q98,52 106,56"/>
+</vector>

@@ -1,25 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="@color/deep_blue">
 
-    <!-- Container for dynamic views: Game, Shop, Theater -->
-    <FrameLayout
-        android:id="@+id/content_frame"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-
-    <!-- Top Navigation Bar for TV Remote -->
+    <!-- Top Navigation Bar for TV Remote (Hides in Game for 100% screen visibility) -->
     <LinearLayout
         android:id="@+id/top_nav_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="16dp"
+        android:padding="12dp"
         android:gravity="center_vertical"
-        android:background="#99001A2E">
+        android:background="#DD001A2E">
 
         <TextView
             android:id="@+id/title_text"
@@ -133,4 +128,11 @@
             android:paddingEnd="16dp" />
     </LinearLayout>
 
-</FrameLayout>
+    <!-- Container for dynamic views: Game, Shop, Theater, Aquarium -->
+    <FrameLayout
+        android:id="@+id/content_frame"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+</LinearLayout>

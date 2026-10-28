@@ -2083,44 +2083,44 @@ public class DiverGameView extends View {
         // Top Left: Big O2 Gauge
         hudPaint.setStyle(Paint.Style.FILL);
         hudPaint.setColor(0xDD001428);
-        canvas.drawRoundRect(40f, 75f, 410f, 160f, 20f, 20f, hudPaint);
+        canvas.drawRoundRect(40f, 25f, 410f, 105f, 18f, 18f, hudPaint);
 
         int oxColor = oxPercent > 0.5f ? 0xFF00E676 : (oxPercent > 0.25f ? 0xFFFFD166 : 0xFFFF1744);
         hudPaint.setColor(0x40FFFFFF);
-        canvas.drawRoundRect(55f, 115f, 395f, 142f, 9f, 9f, hudPaint);
+        canvas.drawRoundRect(55f, 62f, 395f, 89f, 8f, 8f, hudPaint);
         hudPaint.setColor(oxColor);
-        canvas.drawRoundRect(55f, 115f, 55f + 340f * oxPercent, 142f, 9f, 9f, hudPaint);
+        canvas.drawRoundRect(55f, 62f, 55f + 340f * oxPercent, 89f, 8f, 8f, hudPaint);
 
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(22f);
+        textPaint.setTextSize(21f);
         textPaint.setFakeBoldText(true);
         if (mountedCreature != null) {
             textPaint.setColor(0xFF00E676);
-            canvas.drawText("🏇 騎乘漫遊中 (氧氣保護中 💖)", 55f, 108f, textPaint);
+            canvas.drawText("🏇 騎乘漫遊中 (氧氣保護中 💖)", 55f, 54f, textPaint);
         } else if (oxPercent < 0.25f) {
             textPaint.setColor(0xFFFF5252);
-            canvas.drawText("⚠️ 氧氣低: " + (int)(oxPercent * 100) + "% (可呼叫海豚!)", 55f, 108f, textPaint);
+            canvas.drawText("⚠️ 氧氣低: " + (int)(oxPercent * 100) + "% (可呼叫海豚!)", 55f, 54f, textPaint);
         } else {
-            canvas.drawText("🤿 O₂ 氧氣存量: " + (int)(oxPercent * 100) + "%", 55f, 108f, textPaint);
+            canvas.drawText("🤿 O₂ 氧氣存量: " + (int)(oxPercent * 100) + "%", 55f, 54f, textPaint);
         }
 
         // Top Center: Current Weapon Switch Badge (Harpoon, Bubble Gun)
         hudPaint.setColor(0xDD002244);
-        canvas.drawRoundRect(w / 2f - 210f, 75f, w / 2f + 210f, 145f, 18f, 18f, hudPaint);
+        canvas.drawRoundRect(w / 2f - 210f, 25f, w / 2f + 210f, 90f, 16f, 16f, hudPaint);
         textPaint.setTextAlign(Paint.Align.CENTER);
         textPaint.setTextSize(20f);
         if (currentWeapon == WeaponMode.HARPOON) {
             textPaint.setColor(0xFFFFD700);
-            canvas.drawText("🎯 武器：魚叉槍 [按 ▲ 切換氣泡槍]", w / 2f, 118f, textPaint);
+            canvas.drawText("🎯 武器：魚叉槍 [按 ▲ 切換氣泡槍]", w / 2f, 65f, textPaint);
         } else {
             textPaint.setColor(0xFF00E5FF);
-            canvas.drawText("🫧 武器：氣泡催眠槍 [按 ▲ 切換魚叉]", w / 2f, 118f, textPaint);
+            canvas.drawText("🫧 武器：氣泡催眠槍 [按 ▲ 切換魚叉]", w / 2f, 65f, textPaint);
         }
         textPaint.setTextAlign(Paint.Align.LEFT);
 
         // Top Right: Water Depth & Realtime Coins
         hudPaint.setColor(0xCC001428);
-        canvas.drawRoundRect(w - 440f, 75f, w - 40f, 160f, 18f, 18f, hudPaint);
+        canvas.drawRoundRect(w - 440f, 25f, w - 40f, 110f, 16f, 16f, hudPaint);
 
         int depthMeters = (int) Math.max(0, (diverY - 140f) / 10f);
         String zone;
@@ -2130,11 +2130,11 @@ public class DiverGameView extends View {
         else zone = "(深淵發光洞穴)";
 
         textPaint.setColor(0xFF48CAE4);
-        textPaint.setTextSize(21f);
-        canvas.drawText("🌊 水深: " + depthMeters + " 米 " + zone, w - 420f, 110f, textPaint);
+        textPaint.setTextSize(20f);
+        canvas.drawText("🌊 水深: " + depthMeters + " 米 " + zone, w - 420f, 58f, textPaint);
 
         textPaint.setColor(0xFFFFD700);
-        canvas.drawText("💰 金幣: " + state.coins + " 貝殼金幣", w - 420f, 142f, textPaint);
+        canvas.drawText("💰 金幣: " + state.coins + " 貝殼金幣", w - 420f, 92f, textPaint);
 
         // Bottom Remote Guide
         hudPaint.setColor(0xE6000F1F);
@@ -2143,7 +2143,7 @@ public class DiverGameView extends View {
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(20f);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [▲ 上鍵] 切換魚叉/氣泡槍 | [OK 鍵] 發射 / 開箱 / 騎乘 | [返回] 升級", w / 2f, h - 36f, textPaint);
+        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [▲ 上鍵] 切換魚叉/氣泡槍 | [OK 鍵] 捕魚/開箱/騎乘 | [返回鍵] 回甲板選單", w / 2f, h - 36f, textPaint);
         textPaint.setTextAlign(Paint.Align.LEFT);
     }
 }

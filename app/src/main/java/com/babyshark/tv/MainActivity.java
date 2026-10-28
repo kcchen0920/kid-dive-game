@@ -17,6 +17,7 @@ public class MainActivity extends AppCompatActivity {
     private Button btnShop;
     private Button btnTheater;
     private Button btnAquarium;
+    private View topNavBar;
     private Button btnReset;
     private Button btnExit;
 
@@ -36,6 +37,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         state = GameState.get(this);
+        topNavBar = findViewById(R.id.top_nav_bar);
         contentFrame = findViewById(R.id.content_frame);
         coinsText = findViewById(R.id.coins_text);
         btnGame = findViewById(R.id.btn_game);
@@ -84,6 +86,8 @@ public class MainActivity extends AppCompatActivity {
         contentFrame.removeAllViews();
 
         if (mode == Mode.GAME) {
+            // Hide top options in Game so it doesn't impact screen visibility at all!
+            topNavBar.setVisibility(View.GONE);
             if (gameView == null) {
                 gameView = new DiverGameView(this);
                 gameView.setOnGameEventListener(new DiverGameView.OnGameEventListener() {
@@ -102,18 +106,22 @@ public class MainActivity extends AppCompatActivity {
             }
             contentFrame.addView(gameView);
             gameView.requestFocus();
-        } else if (mode == Mode.SHOP) {
-            shopView = new ShopView(this, coins -> updateCoins());
-            contentFrame.addView(shopView);
-            shopView.requestFocus();
-        } else if (mode == Mode.THEATER) {
-            theaterView = new TheaterView(this);
-            contentFrame.addView(theaterView);
-            theaterView.requestFocus();
-        } else if (mode == Mode.AQUARIUM) {
-            aquariumView = new AquariumView(this, coins -> updateCoins());
-            contentFrame.addView(aquariumView);
-            aquariumView.requestFocus();
+        } else {
+            // Show top options clearly above non-game views (Shop, Theater, Aquarium)
+            topNavBar.setVisibility(View.VISIBLE);
+            if (mode == Mode.SHOP) {
+                shopView = new ShopView(this, coins -> updateCoins());
+                contentFrame.addView(shopView);
+                shopView.requestFocus();
+            } else if (mode == Mode.THEATER) {
+                theaterView = new TheaterView(this);
+                contentFrame.addView(theaterView);
+                theaterView.requestFocus();
+            } else if (mode == Mode.AQUARIUM) {
+                aquariumView = new AquariumView(this, coins -> updateCoins());
+                contentFrame.addView(aquariumView);
+                aquariumView.requestFocus();
+            }
         }
     }
 
@@ -149,6 +157,19 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            if (currentMode == Mode.GAME) {
+                if (topNavBar.getVisibility() == View.VISIBLE) {
+                    topNavBar.setVisibility(View.GONE);
+                    if (gameView != null) gameView.requestFocus();
+                } else {
+                    topNavBar.setVisibility(View.VISIBLE);
+                    btnGame.requestFocus();
+                }
+                return true;
+            }
+        }
+
         // If kid presses BACK while in Game/Theater/Aquarium, switch to Shop/Boat
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (currentMode != Mode.SHOP) {

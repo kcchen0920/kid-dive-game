@@ -67,9 +67,13 @@ public class DiverGameView extends View {
     private float inputY = 0f;
     private long lastInputTime = 0;
 
-    // Weapons: 1. Harpoon 2. Bubble Stun Gun
-    public enum WeaponMode { HARPOON, BUBBLE_GUN }
+    // Weapons: 1. Harpoon 2. Bubble Stun Gun 3. Underwater Wildlife Camera
+    public enum WeaponMode { HARPOON, BUBBLE_GUN, CAMERA }
     private WeaponMode currentWeapon = WeaponMode.HARPOON;
+    private float cameraFlashTimer = 0f;
+
+    // Proposal A: Rideable Friendly Creatures (Turtle & Blue Whale)
+    private RealisticFish mountedCreature = null;
 
     // Harpoon Gun & Reel State
     private enum HarpoonState { IDLE, FIRING, REELING }
@@ -182,7 +186,7 @@ public class DiverGameView extends View {
     public static class RealisticFish {
         public enum Species {
             CLOWNFISH, BLUE_TANG, YELLOW_TANG, BABY_SHARK, REEF_SHARK, GREAT_SHARK, GIANT_TUNA, JELLYFISH,
-            ANGLERFISH, NEON_JELLYFISH
+            ANGLERFISH, NEON_JELLYFISH, TURTLE, BLUE_WHALE
         }
 
         public Species species;
@@ -354,6 +358,12 @@ public class DiverGameView extends View {
         spawnSpecies(RealisticFish.Species.GIANT_TUNA, "藍鰭巨鮪 (Giant Bluefin Tuna)", 160, 35.0f, 2, 2450f, 3450f);
         spawnSpecies(RealisticFish.Species.NEON_JELLYFISH, "深海霓虹發光水母", 85, 3.8f, 4, 2300f, 3600f);
 
+        // Proposal A: Rideable Green Sea Turtles (0m - 120m)
+        spawnSpecies(RealisticFish.Species.TURTLE, "綠海龜 奔奔 (可騎乘)", 110, 45.0f, 3, 260f, 1300f);
+
+        // Proposal A: Rideable Giant Blue Whale (220m - 340m)
+        spawnSpecies(RealisticFish.Species.BLUE_WHALE, "深海巨型藍鯨 (可騎乘)", 250, 120.0f, 2, 2300f, 3450f);
+
         // Sequence 1: Abyssal Bioluminescent Cave (340m - 440m+ / Y: 3500 - 4550)
         spawnSpecies(RealisticFish.Species.ANGLERFISH, "深海安康魚 (Anglerfish)", 180, 22.0f, 4, 3550f, 4520f);
         spawnSpecies(RealisticFish.Species.NEON_JELLYFISH, "深海霓虹發光水母", 85, 3.8f, 3, 3700f, 4550f);
@@ -436,6 +446,14 @@ public class DiverGameView extends View {
                     f.length = 165f; f.bodyHeight = 110f;
                     f.primaryColor = 0xFF263238; f.secondaryColor = 0xFF00E5FF; f.bellyColor = 0xFF1A237E;
                     break;
+                case TURTLE:
+                    f.length = 150f; f.bodyHeight = 85f;
+                    f.primaryColor = 0xFF2E7D32; f.secondaryColor = 0xFFFFD54F; f.bellyColor = 0xFFA5D6A7;
+                    break;
+                case BLUE_WHALE:
+                    f.length = 390f; f.bodyHeight = 130f;
+                    f.primaryColor = 0xFF0277BD; f.secondaryColor = 0xFFFFFFFF; f.bellyColor = 0xFFE1F5FE;
+                    break;
             }
             fishes.add(f);
         }
@@ -503,6 +521,10 @@ public class DiverGameView extends View {
             currentWeapon = WeaponMode.BUBBLE_GUN;
             SoundManager.get(getContext()).playBubbleGun();
             addFX(diverX, diverY - 55f, "🫧 切換至：氣泡催眠槍！(可活捉大魚)", 0xFF00E5FF, 32f);
+        } else if (currentWeapon == WeaponMode.BUBBLE_GUN) {
+            currentWeapon = WeaponMode.CAMERA;
+            SoundManager.get(getContext()).playCamera();
+            addFX(diverX, diverY - 55f, "📷 切換至：水下生態相機！(對準生物按 OK 拍照)", 0xFFFFD166, 32f);
         } else {
             currentWeapon = WeaponMode.HARPOON;
             SoundManager.get(getContext()).playHarpoon();
@@ -511,10 +533,34 @@ public class DiverGameView extends View {
     }
 
     private void onActionPressed() {
+        // Proposal A: If already mounted, pressing OK dismounts peacefully!
+        if (mountedCreature != null) {
+            mountedCreature = null;
+            SoundManager.get(getContext()).playBubble();
+            addFX(diverX, diverY - 45f, "🌟 平安下騎！感謝海洋夥伴的護送！", 0xFF00E676, 32f);
+            return;
+        }
+
         // Sequence 3: Dolphin rescue prompt triggered
         if (bobo.active && !bobo.isRescuing && (oxygen / maxOxygen < 0.25f)) {
             triggerDolphinRescue();
             return;
+        }
+
+        // Proposal A: Check mounting Green Sea Turtle or Blue Whale
+        for (RealisticFish f : fishes) {
+            if (f.species == RealisticFish.Species.TURTLE && Math.hypot(diverX - f.x, diverY - f.y) < 130f) {
+                mountedCreature = f;
+                SoundManager.get(getContext()).playUpgrade();
+                addFX(diverX, diverY - 50f, "🐢 騎乘海龜奔奔！免耗氧氣悠游珊瑚區！(再次按 OK 下騎)", 0xFF2E7D32, 34f);
+                return;
+            }
+            if (f.species == RealisticFish.Species.BLUE_WHALE && Math.hypot(diverX - f.x, diverY - f.y) < 180f) {
+                mountedCreature = f;
+                SoundManager.get(getContext()).playDolphin();
+                addFX(diverX, diverY - 55f, "🐋 騎乘深海巨型藍鯨！彩虹噴水高速下潛！(再次按 OK 下騎)", 0xFF0288D1, 36f);
+                return;
+            }
         }
 
         // Sequence 2: Check Treasure Chests interaction
@@ -564,13 +610,51 @@ public class DiverGameView extends View {
             }
         }
 
-        // Weapon Action: Fire based on weapon mode
-        if (currentWeapon == WeaponMode.HARPOON) {
+        // Tool / Weapon Action: Fire based on weapon mode
+        if (currentWeapon == WeaponMode.CAMERA) {
+            takePhoto();
+        } else if (currentWeapon == WeaponMode.HARPOON) {
             if (harpoonState == HarpoonState.IDLE) {
                 fireHarpoon();
             }
         } else {
             fireBubbleGun();
+        }
+    }
+
+    private void takePhoto() {
+        cameraFlashTimer = 0.28f;
+        SoundManager.get(getContext()).playCamera();
+
+        RealisticFish photoTarget = targetFish;
+        if (photoTarget == null) {
+            float closest = 520f;
+            for (RealisticFish f : fishes) {
+                float d = (float) Math.hypot(f.x - diverX, f.y - diverY);
+                if (d < closest) {
+                    closest = d;
+                    photoTarget = f;
+                }
+            }
+        }
+
+        if (photoTarget != null) {
+            String missionTarget = GameState.PHOTO_MISSION_TARGETS[state.photoMissionIndex % GameState.PHOTO_MISSION_TARGETS.length];
+            if (photoTarget.name.contains(missionTarget)) {
+                state.photoMissionIndex++;
+                state.photoBadgesCount++;
+                state.coins += 150;
+                state.save();
+                SoundManager.get(getContext()).playUpgrade();
+                addFX(photoTarget.x, photoTarget.y - 60f, "🏅 達成相機任務！解鎖攝影勳章！+150 金幣！", 0xFFFFD700, 36f);
+            } else {
+                state.coins += 25;
+                state.save();
+                addFX(photoTarget.x, photoTarget.y - 40f, "📸 拍到了 " + photoTarget.name + " 生態照！+25 金幣！", 0xFF00E5FF, 30f);
+            }
+            if (listener != null) listener.onCoinsUpdated(state.coins);
+        } else {
+            addFX(diverX, diverY - 45f, "📸 咔嚓！水下留念特寫！", 0xFFFFFFFF, 26f);
         }
     }
 
@@ -657,6 +741,7 @@ public class DiverGameView extends View {
         invincibleTimer = Math.max(0f, invincibleTimer - dt);
         screenShakeTimer = Math.max(0f, screenShakeTimer - dt);
         hurtFlashTimer = Math.max(0f, hurtFlashTimer - dt);
+        cameraFlashTimer = Math.max(0f, cameraFlashTimer - dt);
 
         // Smooth horizontal facing interpolation
         facingScale += (targetFacingScale - facingScale) * Math.min(1f, dt * 12f);
@@ -667,8 +752,20 @@ public class DiverGameView extends View {
             inputY = 0f;
         }
 
-        // Sequence 3: Dolphin rescue motion takes full control
-        if (bobo.isRescuing) {
+        // Proposal A: Mounted on Turtle or Blue Whale
+        if (mountedCreature != null) {
+            diverX = mountedCreature.x;
+            diverY = mountedCreature.y - (mountedCreature.species == RealisticFish.Species.BLUE_WHALE ? 50f : 24f);
+            diverAngle = 0f;
+            facingScale = mountedCreature.facing;
+
+            if (mountedCreature.species == RealisticFish.Species.BLUE_WHALE) {
+                if (random.nextInt(12) == 0) {
+                    addFX(mountedCreature.x, mountedCreature.y - 65f, "🌈 呼咻~！", 0xFF00E5FF, 26f);
+                }
+            }
+            // Dave rests and breathes freely: NO oxygen consumption!
+        } else if (bobo.isRescuing) {
             // Move dolphin towards Dave, then launch to surface
             float ddx = diverX - bobo.x;
             float ddy = diverY - bobo.y;
@@ -1749,6 +1846,88 @@ public class DiverGameView extends View {
                 canvas.drawLine(tx, halfH * 0.2f, tx + tWave, halfH * 1.1f, ropePaint);
             }
 
+        } else if (f.species == RealisticFish.Species.TURTLE) {
+            // Green Sea Turtle
+            float halfL = f.length / 2f;
+            float halfH = f.bodyHeight / 2f;
+            fishPaint.setColor(f.primaryColor);
+            canvas.drawOval(new RectF(-halfL * 0.8f, -halfH, halfL * 0.7f, halfH), fishPaint);
+            fishPaint.setColor(f.secondaryColor);
+            canvas.drawCircle(-halfL * 0.2f, 0, halfH * 0.45f, fishPaint);
+            canvas.drawCircle(halfL * 0.25f, 0, halfH * 0.4f, fishPaint);
+            fishPaint.setColor(0xFF388E3C);
+            canvas.drawCircle(halfL * 0.82f, -halfH * 0.1f, 15f, fishPaint);
+            fishPaint.setColor(Color.BLACK);
+            canvas.drawCircle(halfL * 0.88f, -halfH * 0.15f, 3f, fishPaint);
+            fishPaint.setColor(0xFF2E7D32);
+            float fWave = (float) Math.sin(f.swimPhase) * 15f;
+            Path frontFin = new Path();
+            frontFin.moveTo(halfL * 0.2f, -halfH * 0.6f);
+            frontFin.lineTo(halfL * 0.5f, -halfH * 1.8f + fWave);
+            frontFin.lineTo(0f, -halfH * 0.8f);
+            frontFin.close();
+            canvas.drawPath(frontFin, fishPaint);
+            Path rearFin = new Path();
+            rearFin.moveTo(-halfL * 0.5f, -halfH * 0.5f);
+            rearFin.lineTo(-halfL * 0.85f, -halfH * 1.2f - fWave);
+            rearFin.lineTo(-halfL * 0.4f, -halfH * 0.4f);
+            rearFin.close();
+            canvas.drawPath(rearFin, fishPaint);
+            if (mountedCreature == null && Math.hypot(diverX - f.x, diverY - f.y) < 130f) {
+                textPaint.setColor(0xFF00E676);
+                textPaint.setTextSize(22f);
+                canvas.drawText("🐢 按 [OK] 騎上海龜！", -80f, -halfH * 1.3f, textPaint);
+            }
+        } else if (f.species == RealisticFish.Species.BLUE_WHALE) {
+            // Giant Blue Whale
+            float halfL = f.length / 2f;
+            float halfH = f.bodyHeight / 2f;
+            fishPaint.setColor(f.primaryColor);
+            Path whaleBody = new Path();
+            whaleBody.moveTo(halfL, 0);
+            whaleBody.quadTo(halfL * 0.4f, -halfH * 1.05f, -halfL * 0.3f, -halfH * 0.6f);
+            whaleBody.quadTo(-halfL * 0.7f, -halfH * 0.25f, -halfL + tailWave, 0);
+            whaleBody.quadTo(-halfL * 0.7f, halfH * 0.25f, -halfL * 0.3f, halfH * 0.6f);
+            whaleBody.quadTo(halfL * 0.4f, halfH * 1.05f, halfL, 0);
+            whaleBody.close();
+            canvas.drawPath(whaleBody, fishPaint);
+
+            fishPaint.setColor(f.bellyColor);
+            Path wBelly = new Path();
+            wBelly.moveTo(halfL * 0.85f, 0);
+            wBelly.quadTo(halfL * 0.25f, halfH * 0.95f, -halfL * 0.3f, halfH * 0.45f);
+            wBelly.lineTo(-halfL * 0.3f, 0);
+            wBelly.close();
+            canvas.drawPath(wBelly, fishPaint);
+
+            fishPaint.setColor(0x440277BD);
+            fishPaint.setStrokeWidth(2.5f);
+            fishPaint.setStyle(Paint.Style.STROKE);
+            for (int k = 0; k < 6; k++) {
+                float py = halfH * 0.2f + k * 8f;
+                canvas.drawLine(halfL * 0.6f - k * 18f, py, -halfL * 0.2f, py, fishPaint);
+            }
+            fishPaint.setStyle(Paint.Style.FILL);
+
+            fishPaint.setColor(f.primaryColor);
+            Path wTail = new Path();
+            wTail.moveTo(-halfL + tailWave, 0);
+            wTail.lineTo(-halfL * 1.25f + tailWave, -halfH * 0.9f);
+            wTail.lineTo(-halfL * 1.12f + tailWave, 0);
+            wTail.lineTo(-halfL * 1.25f + tailWave, halfH * 0.9f);
+            wTail.close();
+            canvas.drawPath(wTail, fishPaint);
+
+            fishPaint.setColor(Color.WHITE);
+            canvas.drawCircle(halfL * 0.72f, -halfH * 0.2f, 6.5f, fishPaint);
+            fishPaint.setColor(0xFF212121);
+            canvas.drawCircle(halfL * 0.73f, -halfH * 0.2f, 3.2f, fishPaint);
+
+            if (mountedCreature == null && Math.hypot(diverX - f.x, diverY - f.y) < 180f) {
+                textPaint.setColor(0xFF40C4FF);
+                textPaint.setTextSize(24f);
+                canvas.drawText("🐋 按 [OK] 騎乘藍鯨！(彩虹噴水)", -110f, -halfH * 1.3f, textPaint);
+            }
         } else {
             // General Coral Fish (Clownfish, Blue Tang, Yellow Tang, Tuna)
             float halfL = f.length / 2f;
@@ -1862,30 +2041,46 @@ public class DiverGameView extends View {
         diverPaint.setColor(Color.WHITE);
         canvas.drawCircle(23f, -4f, 2.5f, diverPaint);
 
-        // Weapon in hand: Harpoon or Bubble Gun
+        // Weapon in hand: Harpoon, Bubble Gun, or Camera
         if (currentWeapon == WeaponMode.HARPOON) {
             diverPaint.setColor(0xFF455A64);
             canvas.drawRoundRect(18f, 5f, 55f, 14f, 3f, 3f, diverPaint);
             diverPaint.setColor(0xFFB0BEC5);
             canvas.drawRect(52f, 7f, 64f, 12f, diverPaint);
-        } else {
+        } else if (currentWeapon == WeaponMode.BUBBLE_GUN) {
             // Cute Bubble Gun (Bright cyan/pink water blaster)
             diverPaint.setColor(0xFF00E5FF);
             canvas.drawRoundRect(18f, 3f, 52f, 15f, 5f, 5f, diverPaint);
             diverPaint.setColor(0xFFFF4081);
             canvas.drawCircle(46f, 9f, 6f, diverPaint);
+        } else {
+            // Cute Underwater Camera
+            diverPaint.setColor(0xFFFFD166);
+            canvas.drawRoundRect(18f, 2f, 52f, 18f, 4f, 4f, diverPaint);
+            diverPaint.setColor(0xFF263238); // Lens
+            canvas.drawCircle(35f, 10f, 6.5f, diverPaint);
+            diverPaint.setColor(0xFF00E5FF);
+            canvas.drawCircle(35f, 10f, 3.5f, diverPaint);
+        }
+
+        if (mountedCreature != null) {
+            textPaint.setColor(0xFFFFD700);
+            textPaint.setTextSize(20f);
+            canvas.drawText("🏇 騎乘中", -30f, -38f, textPaint);
         }
 
         canvas.restore();
     }
 
     private void drawAimReticle(Canvas canvas, RealisticFish target) {
-        ropePaint.setColor(currentWeapon == WeaponMode.HARPOON ? 0x88FFD700 : 0x8800E5FF);
+        int reticleColor = (currentWeapon == WeaponMode.CAMERA) ? 0xFFFFD166 :
+                           (currentWeapon == WeaponMode.HARPOON ? 0xFFFFD700 : 0xFF00E5FF);
+        ropePaint.setColor(reticleColor & 0x88FFFFFF);
         ropePaint.setStrokeWidth(2.5f);
         canvas.drawLine(diverX + (targetFacingScale > 0 ? 50f : -50f), diverY + 8f, target.x, target.y, ropePaint);
 
         harpoonPaint.setStyle(Paint.Style.STROKE);
-        harpoonPaint.setColor(currentWeapon == WeaponMode.HARPOON ? 0xFFFFD700 : 0xFF00E5FF);
+        harpoonPaint.setColor(reticleColor);
         harpoonPaint.setStrokeWidth(3.5f);
         float r = target.bodyHeight * 0.75f;
         canvas.drawCircle(target.x, target.y, r, harpoonPaint);
@@ -1895,22 +2090,36 @@ public class DiverGameView extends View {
         canvas.drawLine(target.x, target.y - r - 12f, target.x, target.y - r + 8f, harpoonPaint);
         canvas.drawLine(target.x, target.y + r - 8f, target.x, target.y + r + 12f, harpoonPaint);
 
-        textPaint.setColor(currentWeapon == WeaponMode.HARPOON ? 0xFFFFDF00 : 0xFF00E5FF);
+        textPaint.setColor(reticleColor);
         textPaint.setTextSize(22f);
-        String actionPrompt = currentWeapon == WeaponMode.HARPOON ? "🎯 鎖定 [按 OK 發射魚叉]" : "🫧 鎖定 [按 OK 發射催眠氣泡]";
+        String actionPrompt;
+        if (currentWeapon == WeaponMode.CAMERA) {
+            actionPrompt = "📷 快門對焦 [按 OK 拍攝生態相片]";
+        } else if (currentWeapon == WeaponMode.HARPOON) {
+            actionPrompt = "🎯 鎖定 [按 OK 發射魚叉]";
+        } else {
+            actionPrompt = "🫧 鎖定 [按 OK 發射催眠氣泡]";
+        }
         canvas.drawText(actionPrompt, target.x - 70f, target.y - r - 16f, textPaint);
     }
 
     private void renderTVHUD(Canvas canvas, int w, int h) {
+        // Red Damage Flash
         if (hurtFlashTimer > 0f) {
             hudPaint.setColor(0x3DFF0000);
+            canvas.drawRect(0, 0, w, h, hudPaint);
+        }
+
+        // Camera Shutter Flash (Proposal B)
+        if (cameraFlashTimer > 0f) {
+            hudPaint.setColor(0xCCFFFFFF);
             canvas.drawRect(0, 0, w, h, hudPaint);
         }
 
         float oxPercent = Math.max(0f, oxygen / maxOxygen);
 
         // Low O2 Pulsing Red Warning Vignette
-        if (oxPercent < 0.25f && !bobo.isRescuing) {
+        if (oxPercent < 0.25f && !bobo.isRescuing && mountedCreature == null) {
             int pulseAlpha = (int)(45 + Math.sin(SystemClock.uptimeMillis() / 150.0) * 35);
             hudPaint.setColor(Color.argb(pulseAlpha, 255, 0, 0));
             canvas.drawRect(0, 0, w, 14, hudPaint);
@@ -1943,28 +2152,34 @@ public class DiverGameView extends View {
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(22f);
         textPaint.setFakeBoldText(true);
-        if (oxPercent < 0.25f) {
+        if (mountedCreature != null) {
+            textPaint.setColor(0xFF00E676);
+            canvas.drawText("🏇 騎乘漫遊中 (氧氣保護中 💖)", 55f, 108f, textPaint);
+        } else if (oxPercent < 0.25f) {
             textPaint.setColor(0xFFFF5252);
             canvas.drawText("⚠️ 氧氣低: " + (int)(oxPercent * 100) + "% (可呼叫海豚!)", 55f, 108f, textPaint);
         } else {
             canvas.drawText("🤿 O₂ 氧氣存量: " + (int)(oxPercent * 100) + "%", 55f, 108f, textPaint);
         }
 
-        // Top Center: Current Weapon Switch Badge (Sequence 3)
+        // Top Center: Current Weapon Switch Badge (Harpoon, Bubble Gun, Camera)
         hudPaint.setColor(0xDD002244);
-        canvas.drawRoundRect(w / 2f - 180f, 75f, w / 2f + 180f, 145f, 18f, 18f, hudPaint);
+        canvas.drawRoundRect(w / 2f - 210f, 75f, w / 2f + 210f, 145f, 18f, 18f, hudPaint);
         textPaint.setTextAlign(Paint.Align.CENTER);
         textPaint.setTextSize(20f);
         if (currentWeapon == WeaponMode.HARPOON) {
             textPaint.setColor(0xFFFFD700);
-            canvas.drawText("🎯 武器：魚叉槍 [按 ▲ 切換氣泡槍]", w / 2f, 118f, textPaint);
-        } else {
+            canvas.drawText("🎯 武器：魚叉槍 [按 ▲ 切換氣泡槍/相機]", w / 2f, 118f, textPaint);
+        } else if (currentWeapon == WeaponMode.BUBBLE_GUN) {
             textPaint.setColor(0xFF00E5FF);
-            canvas.drawText("🫧 武器：氣泡催眠槍 [按 ▲ 切換魚叉]", w / 2f, 118f, textPaint);
+            canvas.drawText("🫧 武器：氣泡催眠槍 [按 ▲ 切換相機/魚叉]", w / 2f, 118f, textPaint);
+        } else {
+            textPaint.setColor(0xFFFFD166);
+            canvas.drawText("📷 工具：生態相機 [按 ▲ 切換魚叉/氣泡槍]", w / 2f, 118f, textPaint);
         }
         textPaint.setTextAlign(Paint.Align.LEFT);
 
-        // Top Right: Water Depth & Realtime Coins (Sequence 1 Depth Zones)
+        // Top Right: Water Depth & Realtime Coins
         hudPaint.setColor(0xCC001428);
         canvas.drawRoundRect(w - 440f, 75f, w - 40f, 160f, 18f, 18f, hudPaint);
 
@@ -1982,14 +2197,25 @@ public class DiverGameView extends View {
         textPaint.setColor(0xFFFFD700);
         canvas.drawText("💰 金幣: " + state.coins + " 貝殼金幣", w - 420f, 142f, textPaint);
 
+        // Proposal B: Active Photo Safari Mission Card (Top Right Sub-card)
+        hudPaint.setColor(0xEE002D4E);
+        canvas.drawRoundRect(w - 440f, 168f, w - 40f, 222f, 12f, 12f, hudPaint);
+        textPaint.setColor(0xFFFFD166);
+        textPaint.setTextSize(17f);
+        String curMission = GameState.PHOTO_MISSION_DESCS[state.photoMissionIndex % GameState.PHOTO_MISSION_DESCS.length];
+        canvas.drawText(curMission, w - 425f, 194f, textPaint);
+        textPaint.setColor(0xFF81D4FA);
+        textPaint.setTextSize(15f);
+        canvas.drawText("🏅 任務進度: " + (state.photoMissionIndex + 1) + "/8 (已解鎖 " + state.photoBadgesCount + " 獎章)", w - 425f, 214f, textPaint);
+
         // Bottom Remote Guide
         hudPaint.setColor(0xE6000F1F);
-        canvas.drawRoundRect(w * 0.10f, h - 72f, w * 0.90f, h - 14f, 16f, 16f, hudPaint);
+        canvas.drawRoundRect(w * 0.08f, h - 72f, w * 0.92f, h - 14f, 16f, 16f, hudPaint);
 
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(20f);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [▲ 上鍵] 切換武器 | [OK 鍵] 發射 / 開寶箱 / 拾珍珠 | [返回] 升級", w / 2f, h - 36f, textPaint);
+        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [▲ 上鍵] 切換魚叉/氣泡槍/相機 | [OK 鍵] 發射 / 開箱 / 騎乘 / 拍照 | [返回] 升級", w / 2f, h - 36f, textPaint);
         textPaint.setTextAlign(Paint.Align.LEFT);
     }
 }

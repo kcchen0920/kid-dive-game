@@ -16,14 +16,16 @@ public class MainActivity extends AppCompatActivity {
     private Button btnGame;
     private Button btnShop;
     private Button btnTheater;
+    private Button btnAquarium;
     private Button btnReset;
 
     private DiverGameView gameView;
     private ShopView shopView;
     private TheaterView theaterView;
+    private AquariumView aquariumView;
 
     private enum Mode {
-        GAME, SHOP, THEATER
+        GAME, SHOP, THEATER, AQUARIUM
     }
     private Mode currentMode = Mode.GAME;
 
@@ -38,11 +40,13 @@ public class MainActivity extends AppCompatActivity {
         btnGame = findViewById(R.id.btn_game);
         btnShop = findViewById(R.id.btn_shop);
         btnTheater = findViewById(R.id.btn_theater);
+        btnAquarium = findViewById(R.id.btn_aquarium);
         btnReset = findViewById(R.id.btn_reset);
 
         btnGame.setOnClickListener(v -> switchMode(Mode.GAME));
         btnShop.setOnClickListener(v -> switchMode(Mode.SHOP));
         btnTheater.setOnClickListener(v -> switchMode(Mode.THEATER));
+        btnAquarium.setOnClickListener(v -> switchMode(Mode.AQUARIUM));
         btnReset.setOnClickListener(v -> showResetConfirmationDialog());
 
         updateCoins();
@@ -103,6 +107,10 @@ public class MainActivity extends AppCompatActivity {
             theaterView = new TheaterView(this);
             contentFrame.addView(theaterView);
             theaterView.requestFocus();
+        } else if (mode == Mode.AQUARIUM) {
+            aquariumView = new AquariumView(this, coins -> updateCoins());
+            contentFrame.addView(aquariumView);
+            aquariumView.requestFocus();
         }
     }
 

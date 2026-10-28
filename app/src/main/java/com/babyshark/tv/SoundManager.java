@@ -11,6 +11,8 @@ public class SoundManager {
     private static SoundManager instance;
     private final Context appContext;
     private MediaPlayer bgmPlayer;
+    private MediaPlayer songPlayer;
+    private int currentSongResId = 0;
     private SoundPool soundPool;
 
     private int sfxCatchId;
@@ -22,6 +24,7 @@ public class SoundManager {
     private int sfxPearlId;
     private int sfxBubbleGunId;
     private int sfxDolphinId;
+    private int sfxCameraId;
 
     private boolean isMuted = false;
 
@@ -94,6 +97,7 @@ public class SoundManager {
         sfxPearlId = soundPool.load(appContext, R.raw.sfx_pearl, 1);
         sfxBubbleGunId = soundPool.load(appContext, R.raw.sfx_bubble_gun, 1);
         sfxDolphinId = soundPool.load(appContext, R.raw.sfx_dolphin, 1);
+        sfxCameraId = soundPool.load(appContext, R.raw.sfx_camera, 1);
     }
 
     public void startBgm() {
@@ -126,6 +130,59 @@ public class SoundManager {
         } catch (Exception e) {
             Log.e(TAG, "pauseBgm error: " + e.getMessage());
         }
+    }
+
+    public void playChildSong(int resId) {
+        try {
+            pauseBgm();
+            if (songPlayer != null) {
+                try {
+                    songPlayer.stop();
+                    songPlayer.release();
+                } catch (Exception ignored) {}
+                songPlayer = null;
+            }
+
+            currentSongResId = resId;
+            AudioAttributes audioAttrs = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build();
+
+            songPlayer = MediaPlayer.create(appContext, resId, audioAttrs, 0);
+            if (songPlayer != null) {
+                songPlayer.setLooping(true);
+                songPlayer.setVolume(1.0f, 1.0f);
+                songPlayer.start();
+                Log.d(TAG, "playChildSong: playing song resId=" + resId);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "playChildSong failed", e);
+        }
+    }
+
+    public void stopChildSong() {
+        try {
+            if (songPlayer != null) {
+                try {
+                    songPlayer.stop();
+                    songPlayer.release();
+                } catch (Exception ignored) {}
+                songPlayer = null;
+            }
+            currentSongResId = 0;
+            startBgm();
+        } catch (Exception e) {
+            Log.e(TAG, "stopChildSong failed", e);
+        }
+    }
+
+    public boolean isChildSongPlaying(int resId) {
+        return songPlayer != null && songPlayer.isPlaying() && currentSongResId == resId;
+    }
+
+    public int getCurrentSongResId() {
+        return currentSongResId;
     }
 
     public void playCatch() {
@@ -173,7 +230,19 @@ public class SoundManager {
         soundPool.play(sfxDolphinId, 1.0f, 1.0f, 1, 0, 1.0f);
     }
 
+    public void playCamera() {
+        if (isMuted || soundPool == null) return;
+        soundPool.play(sfxCameraId, 1.0f, 1.0f, 1, 0, 1.0f);
+    }
+
     public void release() {
+        if (songPlayer != null) {
+            try {
+                songPlayer.stop();
+                songPlayer.release();
+            } catch (Exception ignored) {}
+            songPlayer = null;
+        }
         if (bgmPlayer != null) {
             try {
                 bgmPlayer.stop();

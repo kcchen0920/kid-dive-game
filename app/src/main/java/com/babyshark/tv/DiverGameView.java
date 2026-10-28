@@ -71,6 +71,21 @@ public class DiverGameView extends View {
     public enum WeaponMode { HARPOON, BUBBLE_GUN }
     private WeaponMode currentWeapon = WeaponMode.HARPOON;
 
+    // Redesigned Weapon Switching: Long-Press OK or dedicated Play/Pause button (No conflict with UP arrow)
+    private boolean isActionKeyDown = false;
+    private long actionKeyDownTime = 0;
+    private boolean actionLongPressTriggered = false;
+    private final Runnable longPressWeaponSwitchRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isActionKeyDown && !actionLongPressTriggered) {
+                actionLongPressTriggered = true;
+                toggleWeapon();
+                invalidate();
+            }
+        }
+    };
+
     // Proposal A: Rideable Friendly Creatures (Turtle & Blue Whale)
     private RealisticFish mountedCreature = null;
 
@@ -473,10 +488,6 @@ public class DiverGameView extends View {
                 lastInputTime = now;
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
-                // If not moving, allow quick weapon switch with remote UP key!
-                if (inputX == 0f && inputY == 0f && now - lastInputTime > 300) {
-                    toggleWeapon();
-                }
                 inputY = -1.0f;
                 lastInputTime = now;
                 return true;
@@ -487,7 +498,24 @@ public class DiverGameView extends View {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_BUTTON_A:
-                onActionPressed();
+                if (!isActionKeyDown) {
+                    isActionKeyDown = true;
+                    actionKeyDownTime = now;
+                    actionLongPressTriggered = false;
+                    postDelayed(longPressWeaponSwitchRunnable, 380);
+                }
+                return true;
+            // Dedicated button triggers for TV Remote & Gamepads:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+            case KeyEvent.KEYCODE_BUTTON_X:
+            case KeyEvent.KEYCODE_BUTTON_Y:
+            case KeyEvent.KEYCODE_BUTTON_L1:
+            case KeyEvent.KEYCODE_BUTTON_R1:
+            case KeyEvent.KEYCODE_PROG_BLUE:
+            case KeyEvent.KEYCODE_PROG_YELLOW:
+                toggleWeapon();
                 return true;
             case KeyEvent.KEYCODE_BACK:
                 surfaceAndReturn();
@@ -510,6 +538,16 @@ public class DiverGameView extends View {
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (inputY > 0f) inputY = 0f;
+                return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_BUTTON_A:
+                removeCallbacks(longPressWeaponSwitchRunnable);
+                if (isActionKeyDown && !actionLongPressTriggered) {
+                    onActionPressed();
+                }
+                isActionKeyDown = false;
+                actionLongPressTriggered = false;
                 return true;
         }
         return super.onKeyUp(keyCode, event);
@@ -2106,15 +2144,15 @@ public class DiverGameView extends View {
 
         // Top Center: Current Weapon Switch Badge (Harpoon, Bubble Gun)
         hudPaint.setColor(0xDD002244);
-        canvas.drawRoundRect(w / 2f - 210f, 25f, w / 2f + 210f, 90f, 16f, 16f, hudPaint);
+        canvas.drawRoundRect(w / 2f - 230f, 25f, w / 2f + 230f, 90f, 16f, 16f, hudPaint);
         textPaint.setTextAlign(Paint.Align.CENTER);
         textPaint.setTextSize(20f);
         if (currentWeapon == WeaponMode.HARPOON) {
             textPaint.setColor(0xFFFFD700);
-            canvas.drawText("🎯 武器：魚叉槍 [按 ▲ 切換氣泡槍]", w / 2f, 65f, textPaint);
+            canvas.drawText("🎯 武器：魚叉槍 [長按 OK / 播放鍵 切換]", w / 2f, 65f, textPaint);
         } else {
             textPaint.setColor(0xFF00E5FF);
-            canvas.drawText("🫧 武器：氣泡催眠槍 [按 ▲ 切換魚叉]", w / 2f, 65f, textPaint);
+            canvas.drawText("🫧 武器：氣泡槍 [長按 OK / 播放鍵 切換]", w / 2f, 65f, textPaint);
         }
         textPaint.setTextAlign(Paint.Align.LEFT);
 
@@ -2143,7 +2181,7 @@ public class DiverGameView extends View {
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(20f);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [▲ 上鍵] 切換魚叉/氣泡槍 | [OK 鍵] 捕魚/開箱/騎乘 | [返回鍵] 回甲板選單", w / 2f, h - 36f, textPaint);
+        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [OK 鍵] 抓魚/開箱/騎乘 | [長按 OK 或 播放鍵] 切換武器 | [返回鍵] 回甲板選單", w / 2f, h - 36f, textPaint);
         textPaint.setTextAlign(Paint.Align.LEFT);
     }
 }

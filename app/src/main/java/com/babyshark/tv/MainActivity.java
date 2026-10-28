@@ -16,6 +16,7 @@ public class MainActivity extends AppCompatActivity {
     private Button btnGame;
     private Button btnShop;
     private Button btnTheater;
+    private Button btnReset;
 
     private DiverGameView gameView;
     private ShopView shopView;
@@ -37,10 +38,12 @@ public class MainActivity extends AppCompatActivity {
         btnGame = findViewById(R.id.btn_game);
         btnShop = findViewById(R.id.btn_shop);
         btnTheater = findViewById(R.id.btn_theater);
+        btnReset = findViewById(R.id.btn_reset);
 
         btnGame.setOnClickListener(v -> switchMode(Mode.GAME));
         btnShop.setOnClickListener(v -> switchMode(Mode.SHOP));
         btnTheater.setOnClickListener(v -> switchMode(Mode.THEATER));
+        btnReset.setOnClickListener(v -> showResetConfirmationDialog());
 
         updateCoins();
         switchMode(Mode.GAME);
@@ -101,6 +104,23 @@ public class MainActivity extends AppCompatActivity {
             contentFrame.addView(theaterView);
             theaterView.requestFocus();
         }
+    }
+
+    private void showResetConfirmationDialog() {
+        new androidx.appcompat.app.AlertDialog.Builder(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert)
+            .setTitle("🔄 重新開始全新冒險？")
+            .setMessage("確定要將金幣、裝備與圖鑑重置，回到起點重新體驗小戴夫的水下大冒險嗎？")
+            .setPositiveButton("✅ 確定從頭開始", (dialog, which) -> {
+                state.resetGame();
+                updateCoins();
+                SoundManager.get(this).playUpgrade();
+                if (gameView != null) {
+                    gameView.initGame();
+                }
+                switchMode(Mode.GAME);
+            })
+            .setNegativeButton("❌ 繼續冒險", (dialog, which) -> dialog.dismiss())
+            .show();
     }
 
     @Override

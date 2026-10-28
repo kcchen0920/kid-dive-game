@@ -78,6 +78,22 @@ public class GameState {
             .apply();
     }
 
+    public void resetGame() {
+        coins = 200;
+        oxygenLevel = 1;
+        speedLevel = 1;
+        harpoonLevel = 1;
+        lightLevel = 1;
+        babySharkCount = 0;
+        reefSharkCount = 0;
+        tunaCount = 0;
+        greatSharkCount = 0;
+        anglerfishCount = 0;
+        pearlCount = 0;
+        currentBasket.clear();
+        save();
+    }
+
     public int getMaxOxygen() {
         return 120 + (oxygenLevel - 1) * 45; // up to 435 at Lv.8
     }

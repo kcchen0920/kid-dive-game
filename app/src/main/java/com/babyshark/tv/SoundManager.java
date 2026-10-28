@@ -24,7 +24,6 @@ public class SoundManager {
     private int sfxPearlId;
     private int sfxBubbleGunId;
     private int sfxDolphinId;
-    private int sfxCameraId;
 
     private boolean isMuted = false;
 
@@ -97,7 +96,6 @@ public class SoundManager {
         sfxPearlId = soundPool.load(appContext, R.raw.sfx_pearl, 1);
         sfxBubbleGunId = soundPool.load(appContext, R.raw.sfx_bubble_gun, 1);
         sfxDolphinId = soundPool.load(appContext, R.raw.sfx_dolphin, 1);
-        sfxCameraId = soundPool.load(appContext, R.raw.sfx_camera, 1);
     }
 
     public void startBgm() {
@@ -228,11 +226,6 @@ public class SoundManager {
     public void playDolphin() {
         if (isMuted || soundPool == null) return;
         soundPool.play(sfxDolphinId, 1.0f, 1.0f, 1, 0, 1.0f);
-    }
-
-    public void playCamera() {
-        if (isMuted || soundPool == null) return;
-        soundPool.play(sfxCameraId, 1.0f, 1.0f, 1, 0, 1.0f);
     }
 
     public void release() {

@@ -67,10 +67,9 @@ public class DiverGameView extends View {
     private float inputY = 0f;
     private long lastInputTime = 0;
 
-    // Weapons: 1. Harpoon 2. Bubble Stun Gun 3. Underwater Wildlife Camera
-    public enum WeaponMode { HARPOON, BUBBLE_GUN, CAMERA }
+    // Weapons: 1. Harpoon 2. Bubble Stun Gun
+    public enum WeaponMode { HARPOON, BUBBLE_GUN }
     private WeaponMode currentWeapon = WeaponMode.HARPOON;
-    private float cameraFlashTimer = 0f;
 
     // Proposal A: Rideable Friendly Creatures (Turtle & Blue Whale)
     private RealisticFish mountedCreature = null;
@@ -521,10 +520,6 @@ public class DiverGameView extends View {
             currentWeapon = WeaponMode.BUBBLE_GUN;
             SoundManager.get(getContext()).playBubbleGun();
             addFX(diverX, diverY - 55f, "🫧 切換至：氣泡催眠槍！(可活捉大魚)", 0xFF00E5FF, 32f);
-        } else if (currentWeapon == WeaponMode.BUBBLE_GUN) {
-            currentWeapon = WeaponMode.CAMERA;
-            SoundManager.get(getContext()).playCamera();
-            addFX(diverX, diverY - 55f, "📷 切換至：水下生態相機！(對準生物按 OK 拍照)", 0xFFFFD166, 32f);
         } else {
             currentWeapon = WeaponMode.HARPOON;
             SoundManager.get(getContext()).playHarpoon();
@@ -611,50 +606,12 @@ public class DiverGameView extends View {
         }
 
         // Tool / Weapon Action: Fire based on weapon mode
-        if (currentWeapon == WeaponMode.CAMERA) {
-            takePhoto();
-        } else if (currentWeapon == WeaponMode.HARPOON) {
+        if (currentWeapon == WeaponMode.HARPOON) {
             if (harpoonState == HarpoonState.IDLE) {
                 fireHarpoon();
             }
         } else {
             fireBubbleGun();
-        }
-    }
-
-    private void takePhoto() {
-        cameraFlashTimer = 0.28f;
-        SoundManager.get(getContext()).playCamera();
-
-        RealisticFish photoTarget = targetFish;
-        if (photoTarget == null) {
-            float closest = 520f;
-            for (RealisticFish f : fishes) {
-                float d = (float) Math.hypot(f.x - diverX, f.y - diverY);
-                if (d < closest) {
-                    closest = d;
-                    photoTarget = f;
-                }
-            }
-        }
-
-        if (photoTarget != null) {
-            String missionTarget = GameState.PHOTO_MISSION_TARGETS[state.photoMissionIndex % GameState.PHOTO_MISSION_TARGETS.length];
-            if (photoTarget.name.contains(missionTarget)) {
-                state.photoMissionIndex++;
-                state.photoBadgesCount++;
-                state.coins += 150;
-                state.save();
-                SoundManager.get(getContext()).playUpgrade();
-                addFX(photoTarget.x, photoTarget.y - 60f, "🏅 達成相機任務！解鎖攝影勳章！+150 金幣！", 0xFFFFD700, 36f);
-            } else {
-                state.coins += 25;
-                state.save();
-                addFX(photoTarget.x, photoTarget.y - 40f, "📸 拍到了 " + photoTarget.name + " 生態照！+25 金幣！", 0xFF00E5FF, 30f);
-            }
-            if (listener != null) listener.onCoinsUpdated(state.coins);
-        } else {
-            addFX(diverX, diverY - 45f, "📸 咔嚓！水下留念特寫！", 0xFFFFFFFF, 26f);
         }
     }
 
@@ -741,7 +698,6 @@ public class DiverGameView extends View {
         invincibleTimer = Math.max(0f, invincibleTimer - dt);
         screenShakeTimer = Math.max(0f, screenShakeTimer - dt);
         hurtFlashTimer = Math.max(0f, hurtFlashTimer - dt);
-        cameraFlashTimer = Math.max(0f, cameraFlashTimer - dt);
 
         // Smooth horizontal facing interpolation
         facingScale += (targetFacingScale - facingScale) * Math.min(1f, dt * 12f);
@@ -2073,8 +2029,7 @@ public class DiverGameView extends View {
     }
 
     private void drawAimReticle(Canvas canvas, RealisticFish target) {
-        int reticleColor = (currentWeapon == WeaponMode.CAMERA) ? 0xFFFFD166 :
-                           (currentWeapon == WeaponMode.HARPOON ? 0xFFFFD700 : 0xFF00E5FF);
+        int reticleColor = (currentWeapon == WeaponMode.HARPOON ? 0xFFFFD700 : 0xFF00E5FF);
         ropePaint.setColor(reticleColor & 0x88FFFFFF);
         ropePaint.setStrokeWidth(2.5f);
         canvas.drawLine(diverX + (targetFacingScale > 0 ? 50f : -50f), diverY + 8f, target.x, target.y, ropePaint);
@@ -2092,14 +2047,7 @@ public class DiverGameView extends View {
 
         textPaint.setColor(reticleColor);
         textPaint.setTextSize(22f);
-        String actionPrompt;
-        if (currentWeapon == WeaponMode.CAMERA) {
-            actionPrompt = "📷 快門對焦 [按 OK 拍攝生態相片]";
-        } else if (currentWeapon == WeaponMode.HARPOON) {
-            actionPrompt = "🎯 鎖定 [按 OK 發射魚叉]";
-        } else {
-            actionPrompt = "🫧 鎖定 [按 OK 發射催眠氣泡]";
-        }
+        String actionPrompt = (currentWeapon == WeaponMode.HARPOON) ? "🎯 鎖定 [按 OK 發射魚叉]" : "🫧 鎖定 [按 OK 發射催眠氣泡]";
         canvas.drawText(actionPrompt, target.x - 70f, target.y - r - 16f, textPaint);
     }
 
@@ -2107,12 +2055,6 @@ public class DiverGameView extends View {
         // Red Damage Flash
         if (hurtFlashTimer > 0f) {
             hudPaint.setColor(0x3DFF0000);
-            canvas.drawRect(0, 0, w, h, hudPaint);
-        }
-
-        // Camera Shutter Flash (Proposal B)
-        if (cameraFlashTimer > 0f) {
-            hudPaint.setColor(0xCCFFFFFF);
             canvas.drawRect(0, 0, w, h, hudPaint);
         }
 
@@ -2162,20 +2104,17 @@ public class DiverGameView extends View {
             canvas.drawText("🤿 O₂ 氧氣存量: " + (int)(oxPercent * 100) + "%", 55f, 108f, textPaint);
         }
 
-        // Top Center: Current Weapon Switch Badge (Harpoon, Bubble Gun, Camera)
+        // Top Center: Current Weapon Switch Badge (Harpoon, Bubble Gun)
         hudPaint.setColor(0xDD002244);
         canvas.drawRoundRect(w / 2f - 210f, 75f, w / 2f + 210f, 145f, 18f, 18f, hudPaint);
         textPaint.setTextAlign(Paint.Align.CENTER);
         textPaint.setTextSize(20f);
         if (currentWeapon == WeaponMode.HARPOON) {
             textPaint.setColor(0xFFFFD700);
-            canvas.drawText("🎯 武器：魚叉槍 [按 ▲ 切換氣泡槍/相機]", w / 2f, 118f, textPaint);
-        } else if (currentWeapon == WeaponMode.BUBBLE_GUN) {
-            textPaint.setColor(0xFF00E5FF);
-            canvas.drawText("🫧 武器：氣泡催眠槍 [按 ▲ 切換相機/魚叉]", w / 2f, 118f, textPaint);
+            canvas.drawText("🎯 武器：魚叉槍 [按 ▲ 切換氣泡槍]", w / 2f, 118f, textPaint);
         } else {
-            textPaint.setColor(0xFFFFD166);
-            canvas.drawText("📷 工具：生態相機 [按 ▲ 切換魚叉/氣泡槍]", w / 2f, 118f, textPaint);
+            textPaint.setColor(0xFF00E5FF);
+            canvas.drawText("🫧 武器：氣泡催眠槍 [按 ▲ 切換魚叉]", w / 2f, 118f, textPaint);
         }
         textPaint.setTextAlign(Paint.Align.LEFT);
 
@@ -2197,17 +2136,6 @@ public class DiverGameView extends View {
         textPaint.setColor(0xFFFFD700);
         canvas.drawText("💰 金幣: " + state.coins + " 貝殼金幣", w - 420f, 142f, textPaint);
 
-        // Proposal B: Active Photo Safari Mission Card (Top Right Sub-card)
-        hudPaint.setColor(0xEE002D4E);
-        canvas.drawRoundRect(w - 440f, 168f, w - 40f, 222f, 12f, 12f, hudPaint);
-        textPaint.setColor(0xFFFFD166);
-        textPaint.setTextSize(17f);
-        String curMission = GameState.PHOTO_MISSION_DESCS[state.photoMissionIndex % GameState.PHOTO_MISSION_DESCS.length];
-        canvas.drawText(curMission, w - 425f, 194f, textPaint);
-        textPaint.setColor(0xFF81D4FA);
-        textPaint.setTextSize(15f);
-        canvas.drawText("🏅 任務進度: " + (state.photoMissionIndex + 1) + "/8 (已解鎖 " + state.photoBadgesCount + " 獎章)", w - 425f, 214f, textPaint);
-
         // Bottom Remote Guide
         hudPaint.setColor(0xE6000F1F);
         canvas.drawRoundRect(w * 0.08f, h - 72f, w * 0.92f, h - 14f, 16f, 16f, hudPaint);
@@ -2215,7 +2143,7 @@ public class DiverGameView extends View {
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(20f);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [▲ 上鍵] 切換魚叉/氣泡槍/相機 | [OK 鍵] 發射 / 開箱 / 騎乘 / 拍照 | [返回] 升級", w / 2f, h - 36f, textPaint);
+        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [▲ 上鍵] 切換魚叉/氣泡槍 | [OK 鍵] 發射 / 開箱 / 騎乘 | [返回] 升級", w / 2f, h - 36f, textPaint);
         textPaint.setTextAlign(Paint.Align.LEFT);
     }
 }

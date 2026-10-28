@@ -22,23 +22,6 @@ public class GameState {
     public int greatSharkCount;
     public int anglerfishCount;
     public int pearlCount;
-    public int photoMissionIndex;
-    public int photoBadgesCount;
-
-    public static final String[] PHOTO_MISSION_TARGETS = {
-        "小丑魚", "Baby Shark", "海月水母", "黑鰭礁鯊", "綠海龜", "深海安康魚", "巨型藍鯨", "大白鯊"
-    };
-
-    public static final String[] PHOTO_MISSION_DESCS = {
-        "📸 拍下小丑魚在珊瑚海葵邊的照片！",
-        "📸 拍下可愛的 Baby Shark 游動特寫！",
-        "📸 拍下粉紫海月水母的漂浮光影！",
-        "📸 拍下黑鰭礁鯊的黑色背鰭英姿！",
-        "📸 拍下海龜在淺海優雅滑翔的照片！",
-        "📸 拍下深海安康魚頭頂發光的小燈籠！",
-        "📸 拍下深海巨型藍鯨的壯麗全貌！",
-        "📸 拍下大白鯊霸氣巡遊深海海溝！"
-    };
 
     public static final int MAX_TIER = 8;
 
@@ -70,8 +53,6 @@ public class GameState {
         greatSharkCount = prefs.getInt("greatSharkCount", 0);
         anglerfishCount = prefs.getInt("anglerfishCount", 0);
         pearlCount = prefs.getInt("pearlCount", 0);
-        photoMissionIndex = prefs.getInt("photoMissionIndex", 0);
-        photoBadgesCount = prefs.getInt("photoBadgesCount", 0);
     }
 
     public static synchronized GameState get(Context context) {
@@ -94,8 +75,6 @@ public class GameState {
             .putInt("greatSharkCount", greatSharkCount)
             .putInt("anglerfishCount", anglerfishCount)
             .putInt("pearlCount", pearlCount)
-            .putInt("photoMissionIndex", photoMissionIndex)
-            .putInt("photoBadgesCount", photoBadgesCount)
             .apply();
     }
 
@@ -111,8 +90,6 @@ public class GameState {
         greatSharkCount = 0;
         anglerfishCount = 0;
         pearlCount = 0;
-        photoMissionIndex = 0;
-        photoBadgesCount = 0;
         currentBasket.clear();
         save();
     }

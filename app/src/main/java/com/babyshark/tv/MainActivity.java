@@ -18,6 +18,7 @@ public class MainActivity extends AppCompatActivity {
     private Button btnTheater;
     private Button btnAquarium;
     private Button btnReset;
+    private Button btnExit;
 
     private DiverGameView gameView;
     private ShopView shopView;
@@ -42,12 +43,14 @@ public class MainActivity extends AppCompatActivity {
         btnTheater = findViewById(R.id.btn_theater);
         btnAquarium = findViewById(R.id.btn_aquarium);
         btnReset = findViewById(R.id.btn_reset);
+        btnExit = findViewById(R.id.btn_exit);
 
         btnGame.setOnClickListener(v -> switchMode(Mode.GAME));
         btnShop.setOnClickListener(v -> switchMode(Mode.SHOP));
         btnTheater.setOnClickListener(v -> switchMode(Mode.THEATER));
         btnAquarium.setOnClickListener(v -> switchMode(Mode.AQUARIUM));
         btnReset.setOnClickListener(v -> showResetConfirmationDialog());
+        btnExit.setOnClickListener(v -> showExitConfirmationDialog());
 
         updateCoins();
         switchMode(Mode.GAME);
@@ -131,12 +134,28 @@ public class MainActivity extends AppCompatActivity {
             .show();
     }
 
+    private void showExitConfirmationDialog() {
+        new androidx.appcompat.app.AlertDialog.Builder(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert)
+            .setTitle("🚪 退出遊戲？")
+            .setMessage("確定要關閉遊戲並返回電視桌面嗎？金幣與所有進度皆已為您自動儲存！")
+            .setPositiveButton("❌ 退出關閉", (dialog, which) -> {
+                SoundManager.get(this).release();
+                finishAffinity();
+                System.exit(0);
+            })
+            .setNegativeButton("🌊 繼續遊玩", (dialog, which) -> dialog.dismiss())
+            .show();
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        // If kid presses BACK while in Game, switch to Shop/Boat
+        // If kid presses BACK while in Game/Theater/Aquarium, switch to Shop/Boat
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (currentMode != Mode.SHOP) {
                 switchMode(Mode.SHOP);
+                return true;
+            } else {
+                showExitConfirmationDialog();
                 return true;
             }
         }

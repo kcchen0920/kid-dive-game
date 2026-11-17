@@ -11,6 +11,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -67,6 +68,16 @@ public class DiverGameView extends View {
     private float inputX = 0f;
     private float inputY = 0f;
     private long lastInputTime = 0;
+
+    // Pad / Touch Virtual Joystick & On-Screen Action Buttons
+    private int joystickPointerId = -1;
+    private float joystickOriginX = 0f;
+    private float joystickOriginY = 0f;
+    private float joystickKnobX = 0f;
+    private float joystickKnobY = 0f;
+    private boolean isTouchJoystickActive = false;
+    private boolean isTouchActionPressed = false;
+    private static final float JOYSTICK_RADIUS = 95f;
 
     // Weapons: 1. Harpoon 2. Bubble Stun Gun
     public enum WeaponMode { HARPOON, BUBBLE_GUN }
@@ -581,6 +592,107 @@ public class DiverGameView extends View {
         return super.onKeyUp(keyCode, event);
     }
 
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        int w = getWidth();
+        int h = getHeight();
+        if (w == 0 || h == 0) return true;
+
+        int action = event.getActionMasked();
+        int actionIndex = event.getActionIndex();
+        int pointerId = event.getPointerId(actionIndex);
+
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN: {
+                float tx = event.getX(actionIndex);
+                float ty = event.getY(actionIndex);
+
+                // 1. Top-Center Weapon Switcher Pill
+                if (tx >= w / 2f - 190f && tx <= w / 2f + 190f && ty >= 18f && ty <= 102f) {
+                    toggleWeapon();
+                    return true;
+                }
+
+                // 2. Top-Right "🏠 商店" Button
+                if (tx >= w - 205f && tx <= w - 35f && ty >= 118f && ty <= 178f) {
+                    surfaceAndReturn();
+                    return true;
+                }
+
+                // 3. Bottom-Right Weapon Switch Circle
+                float swCx = w - 260f;
+                float swCy = h - 105f;
+                if (Math.hypot(tx - swCx, ty - swCy) <= 56f) {
+                    toggleWeapon();
+                    return true;
+                }
+
+                // 4. Bottom-Right Big Action Circle (or tapping right half of screen)
+                float actCx = w - 125f;
+                float actCy = h - 135f;
+                if (Math.hypot(tx - actCx, ty - actCy) <= 84f || tx >= w * 0.55f) {
+                    isTouchActionPressed = true;
+                    onActionPressed();
+                    return true;
+                }
+
+                // 5. Left Half of Screen -> Virtual Floating Joystick
+                if (joystickPointerId == -1) {
+                    joystickPointerId = pointerId;
+                    isTouchJoystickActive = true;
+                    joystickOriginX = tx;
+                    joystickOriginY = ty;
+                    joystickKnobX = tx;
+                    joystickKnobY = ty;
+                    lastInputTime = SystemClock.uptimeMillis();
+                }
+                return true;
+            }
+
+            case MotionEvent.ACTION_MOVE: {
+                if (joystickPointerId != -1) {
+                    int idx = event.findPointerIndex(joystickPointerId);
+                    if (idx >= 0) {
+                        float mx = event.getX(idx);
+                        float my = event.getY(idx);
+                        float dx = mx - joystickOriginX;
+                        float dy = my - joystickOriginY;
+                        float dist = (float) Math.hypot(dx, dy);
+                        if (dist > JOYSTICK_RADIUS) {
+                            dx = (dx / dist) * JOYSTICK_RADIUS;
+                            dy = (dy / dist) * JOYSTICK_RADIUS;
+                        }
+                        joystickKnobX = joystickOriginX + dx;
+                        joystickKnobY = joystickOriginY + dy;
+
+                        inputX = dx / JOYSTICK_RADIUS;
+                        inputY = dy / JOYSTICK_RADIUS;
+                        if (Math.abs(inputX) > 0.12f) {
+                            targetFacingScale = (inputX > 0f) ? 1.0f : -1.0f;
+                        }
+                        lastInputTime = SystemClock.uptimeMillis();
+                    }
+                }
+                return true;
+            }
+
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_POINTER_UP:
+            case MotionEvent.ACTION_CANCEL: {
+                isTouchActionPressed = false;
+                if (action == MotionEvent.ACTION_CANCEL || pointerId == joystickPointerId) {
+                    joystickPointerId = -1;
+                    isTouchJoystickActive = false;
+                    inputX = 0f;
+                    inputY = 0f;
+                }
+                return true;
+            }
+        }
+        return true;
+    }
+
     private void toggleWeapon() {
         if (currentWeapon == WeaponMode.HARPOON) {
             currentWeapon = WeaponMode.BUBBLE_GUN;
@@ -771,8 +883,10 @@ public class DiverGameView extends View {
         // Smooth horizontal facing interpolation
         facingScale += (targetFacingScale - facingScale) * Math.min(1f, dt * 12f);
 
-        // Remote Watchdog
-        if (now - lastInputTime > 220) {
+        // Remote Watchdog (skip timeout while finger is holding virtual joystick)
+        if (isTouchJoystickActive) {
+            lastInputTime = now;
+        } else if (now - lastInputTime > 220) {
             inputX = 0f;
             inputY = 0f;
         }
@@ -2510,14 +2624,71 @@ public class DiverGameView extends View {
         textPaint.setColor(0xFFFFD700);
         canvas.drawText("💰 金幣: " + state.coins + " 貝殼金幣", w - 420f, 92f, textPaint);
 
+        // Top-Right Touch Button: Return to Shop / Boat
+        hudPaint.setStyle(Paint.Style.FILL);
+        hudPaint.setColor(0xDD003865);
+        canvas.drawRoundRect(w - 200f, 122f, w - 40f, 174f, 20f, 20f, hudPaint);
+        hudPaint.setStyle(Paint.Style.STROKE);
+        hudPaint.setStrokeWidth(2.5f);
+        hudPaint.setColor(0xAA48CAE4);
+        canvas.drawRoundRect(w - 200f, 122f, w - 40f, 174f, 20f, 20f, hudPaint);
+        hudPaint.setStyle(Paint.Style.FILL);
+        textPaint.setColor(Color.WHITE);
+        textPaint.setTextSize(21f);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        canvas.drawText("🏠 商店", w - 120f, 156f, textPaint);
+
+        // Pad / Touch Controls: Left Virtual Joystick
+        float jx = isTouchJoystickActive ? joystickOriginX : 145f;
+        float jy = isTouchJoystickActive ? joystickOriginY : h - 145f;
+        float kx = isTouchJoystickActive ? joystickKnobX : 145f;
+        float ky = isTouchJoystickActive ? joystickKnobY : h - 145f;
+
+        hudPaint.setStyle(Paint.Style.FILL);
+        hudPaint.setColor(isTouchJoystickActive ? 0x4400E5FF : 0x26FFFFFF);
+        canvas.drawCircle(jx, jy, JOYSTICK_RADIUS, hudPaint);
+        hudPaint.setStyle(Paint.Style.STROKE);
+        hudPaint.setStrokeWidth(3f);
+        hudPaint.setColor(isTouchJoystickActive ? 0xCC00E5FF : 0x66FFFFFF);
+        canvas.drawCircle(jx, jy, JOYSTICK_RADIUS, hudPaint);
+        hudPaint.setStyle(Paint.Style.FILL);
+        hudPaint.setColor(isTouchJoystickActive ? 0xEE00E5FF : 0x88FFFFFF);
+        canvas.drawCircle(kx, ky, 38f, hudPaint);
+
+        // Pad / Touch Controls: Bottom-Right Big Action & Switch Buttons
+        float actCx = w - 125f;
+        float actCy = h - 135f;
+        float actR = isTouchActionPressed ? 64f : 72f;
+        hudPaint.setColor(isHarpoon ? 0xDDFFB300 : 0xDD00B8D4);
+        canvas.drawCircle(actCx, actCy, actR, hudPaint);
+        hudPaint.setStyle(Paint.Style.STROKE);
+        hudPaint.setStrokeWidth(4f);
+        hudPaint.setColor(Color.WHITE);
+        canvas.drawCircle(actCx, actCy, actR, hudPaint);
+        hudPaint.setStyle(Paint.Style.FILL);
+        textPaint.setTextSize(42f);
+        canvas.drawText(isHarpoon ? "🎯" : "🫧", actCx, actCy + 14f, textPaint);
+
+        float swCx = w - 260f;
+        float swCy = h - 105f;
+        hudPaint.setColor(0xCC002244);
+        canvas.drawCircle(swCx, swCy, 46f, hudPaint);
+        hudPaint.setStyle(Paint.Style.STROKE);
+        hudPaint.setStrokeWidth(3f);
+        hudPaint.setColor(0xAA48CAE4);
+        canvas.drawCircle(swCx, swCy, 46f, hudPaint);
+        hudPaint.setStyle(Paint.Style.FILL);
+        textPaint.setTextSize(30f);
+        canvas.drawText("🔄", swCx, swCy + 10f, textPaint);
+
         // Bottom Remote Guide (Icon-First for 4-year-old kids)
         hudPaint.setColor(0xD8001226);
-        canvas.drawRoundRect(w * 0.12f, h - 70f, w * 0.88f, h - 14f, 24f, 24f, hudPaint);
+        canvas.drawRoundRect(w * 0.22f, h - 64f, w * 0.78f, h - 14f, 24f, 24f, hudPaint);
 
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(22f);
+        textPaint.setTextSize(20f);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("🕹️ 方向鍵游動   •   ⭕ 按 OK 抓魚/互動   •   ⏯️ 長按換泡泡   •   ↩️ 返回商店", w / 2f, h - 34f, textPaint);
+        canvas.drawText("🕹️ 左手拖曳游動   •   🎯 右手點擊互動/捕魚", w / 2f, h - 32f, textPaint);
         textPaint.setTextAlign(Paint.Align.LEFT);
     }
 }

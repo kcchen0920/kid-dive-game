@@ -10,6 +10,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -205,6 +206,20 @@ public class AquariumView extends View {
                 return true;
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
+            dropperX = Math.max(tankL + 60f, Math.min(tankR - 60f, event.getX()));
+            if (action == MotionEvent.ACTION_DOWN) {
+                dropFood();
+            }
+            postInvalidate();
+            return true;
+        }
+        return true;
     }
 
     private void dropFood() {

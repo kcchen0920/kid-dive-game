@@ -28,9 +28,19 @@ public class AquariumView extends View {
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private Paint waterPaint;
+    private final Paint glossPaint = new Paint();
+    private final Path glossPath = new Path();
 
-    // Food Dropper position at top
+    // Dynamic tank bounds
+    private float tankL = 160f, tankT = 160f, tankR = 1760f, tankB = 990f;
+    private boolean boundsReady = false;
+
+    // Food Dropper position at top & cooldown animation
     private float dropperX = 960f;
+    private static final long FEED_COOLDOWN_MS = 650L;
+    private static final long DROPPER_ANIM_MS = 420L;
+    private long lastFeedTime = 0L;
 
     // Food Pellets
     private static class FoodPellet {
@@ -39,10 +49,11 @@ public class AquariumView extends View {
     }
     private final List<FoodPellet> pellets = new ArrayList<>();
 
-    // Heart Bubbles
+    // Heart & Coin Bubbles
     private static class HeartBubble {
         float x, y, vy, size, alpha;
         long spawnTime;
+        String symbol = "❤️";
     }
     private final List<HeartBubble> hearts = new ArrayList<>();
 
@@ -70,8 +81,6 @@ public class AquariumView extends View {
 
     private long lastTime = 0;
     private boolean isRunning = true;
-    private String feedNotice = "❤️ 歡迎來到客廳水族箱！使用 [◀ / ▶] 移動飼料罐，按 [OK] 投餵餅乾！";
-    private long noticeTime = 0;
 
     public AquariumView(Context context, OnCoinsChangeListener listener) {
         super(context);
@@ -128,37 +137,92 @@ public class AquariumView extends View {
     }
 
     @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        if (w <= 0 || h <= 0) return;
+
+        tankL = Math.max(80f, w * 0.08f);
+        tankR = w - tankL;
+        tankT = Math.max(120f, h * 0.16f);
+        tankB = h - Math.max(85f, h * 0.10f);
+
+        waterPaint = new Paint();
+        waterPaint.setShader(new LinearGradient(
+            0, tankT, 0, tankB,
+            new int[]{ 0xEE00B4D8, 0xEE0077B6, 0xEE023E8A },
+            new float[]{ 0.0f, 0.45f, 1.0f },
+            Shader.TileMode.CLAMP
+        ));
+
+        glossPaint.setColor(0x18FFFFFF);
+        glossPath.reset();
+        glossPath.moveTo(tankL, tankT);
+        glossPath.lineTo(tankL + Math.min(220f, (tankR - tankL) * 0.18f), tankT);
+        glossPath.lineTo(tankL + Math.min(80f, (tankR - tankL) * 0.07f), tankB);
+        glossPath.lineTo(tankL, tankB);
+        glossPath.close();
+
+        float spanX = Math.max(120f, tankR - tankL - 140f);
+        float spanY = Math.max(100f, tankB - tankT - 145f);
+        if (!boundsReady) {
+            dropperX = w / 2f;
+            for (AirBubble b : airBubbles) {
+                b.x = tankL + 30f + random.nextFloat() * Math.max(100f, tankR - tankL - 60f);
+                b.y = tankT + 20f + random.nextFloat() * Math.max(80f, tankB - tankT - 65f);
+            }
+            for (AquariumFish f : aquariumFishes) {
+                f.x = tankL + 70f + random.nextFloat() * spanX;
+                f.y = tankT + 70f + random.nextFloat() * spanY;
+            }
+            boundsReady = true;
+        } else {
+            dropperX = Math.max(tankL + 60f, Math.min(tankR - 60f, dropperX));
+            for (AquariumFish f : aquariumFishes) {
+                f.x = Math.max(tankL + 80f, Math.min(tankR - 80f, f.x));
+                f.y = Math.max(tankT + 65f, Math.min(tankB - 75f, f.y));
+            }
+        }
+    }
+
+    @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        float step = Math.max(30f, (tankR - tankL) * 0.03f);
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                dropperX = Math.max(220f, dropperX - 45f);
+                dropperX = Math.max(tankL + 60f, dropperX - step);
                 postInvalidate();
                 return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                dropperX = Math.min(1700f, dropperX + 45f);
+                dropperX = Math.min(tankR - 60f, dropperX + step);
                 postInvalidate();
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_BUTTON_A:
-                dropFood();
+                if (event.getRepeatCount() == 0) {
+                    dropFood();
+                }
                 return true;
         }
         return super.onKeyDown(keyCode, event);
     }
 
     private void dropFood() {
+        long now = SystemClock.uptimeMillis();
+        if (now - lastFeedTime < FEED_COOLDOWN_MS) {
+            return;
+        }
+        lastFeedTime = now;
+
         for (int i = 0; i < 3; i++) {
             FoodPellet p = new FoodPellet();
             p.x = dropperX + (random.nextFloat() - 0.5f) * 30f;
-            p.y = 195f;
+            p.y = tankT + 20f;
             p.vy = 85f + random.nextFloat() * 50f;
             p.r = 6f + random.nextFloat() * 3f;
             pellets.add(p);
         }
         SoundManager.get(getContext()).playBubble();
-        feedNotice = "🍪 投下了美味小蝦米餅乾！小魚們爭先恐後游過來啦~";
-        noticeTime = SystemClock.uptimeMillis();
     }
 
     @Override
@@ -184,9 +248,9 @@ public class AquariumView extends View {
         // 1. Aeration Bubbles
         for (AirBubble b : airBubbles) {
             b.y += b.vy * 60f * dt;
-            if (b.y < 180f) {
-                b.y = 880f;
-                b.x = 200f + random.nextFloat() * 1520f;
+            if (b.y < tankT + 15f) {
+                b.y = tankB - 45f;
+                b.x = tankL + 30f + random.nextFloat() * Math.max(100f, tankR - tankL - 60f);
             }
         }
 
@@ -195,7 +259,7 @@ public class AquariumView extends View {
         while (pIt.hasNext()) {
             FoodPellet p = pIt.next();
             p.y += p.vy * dt;
-            if (p.eaten || p.y > 880f) {
+            if (p.eaten || p.y > tankB - 45f) {
                 pIt.remove();
             }
         }
@@ -251,37 +315,47 @@ public class AquariumView extends View {
                     f.isSpinning = true;
                     f.spinAngle = 0f;
 
-                    // Spawn Heart Bubble!
+                    // Spawn Heart & Coin Bubbles!
                     HeartBubble hb = new HeartBubble();
                     hb.x = f.x;
                     hb.y = f.y - 25f;
                     hb.vy = -65f;
-                    hb.size = 28f;
+                    hb.size = 30f;
                     hb.alpha = 1f;
                     hb.spawnTime = now;
+                    hb.symbol = "❤️";
                     hearts.add(hb);
+
+                    HeartBubble cb = new HeartBubble();
+                    cb.x = f.x + 26f;
+                    cb.y = f.y - 42f;
+                    cb.vy = -80f;
+                    cb.size = 24f;
+                    cb.alpha = 1f;
+                    cb.spawnTime = now;
+                    cb.symbol = "+5 🪙";
+                    hearts.add(cb);
 
                     // Reward coins for happy fish feeding
                     state.coins += 5;
                     state.save();
                     if (coinsListener != null) coinsListener.onCoinsChanged(state.coins);
                     SoundManager.get(getContext()).playCatch();
-                    feedNotice = "💖 " + f.name + " 吃到了小蝦米！開心吐出愛心泡泡！+5 貝殼金幣！";
-                    noticeTime = now;
                 }
             } else {
                 // Normal calm swimming
                 f.x += f.vx * dt;
                 f.y += (float) Math.sin(f.swimPhase) * 0.8f;
-                if (f.x < 240f) {
-                    f.x = 240f;
+                if (f.x < tankL + 80f) {
+                    f.x = tankL + 80f;
                     f.vx = Math.abs(f.vx);
                     f.facing = 1f;
-                } else if (f.x > 1680f) {
-                    f.x = 1680f;
+                } else if (f.x > tankR - 80f) {
+                    f.x = tankR - 80f;
                     f.vx = -Math.abs(f.vx);
                     f.facing = -1f;
                 }
+                f.y = Math.max(tankT + 65f, Math.min(tankB - 75f, f.y));
             }
         }
     }
@@ -294,20 +368,14 @@ public class AquariumView extends View {
         canvas.drawColor(Color.parseColor("#0B132B"));
 
         // 2. Crystal Acrylic Tank Frame
-        float tankL = 160f, tankT = 160f, tankR = w - 160f, tankB = h - 90f;
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(0xFF1C2541);
         canvas.drawRoundRect(tankL - 20f, tankT - 20f, tankR + 20f, tankB + 20f, 24f, 24f, paint);
 
         // Tank Water Gradient
-        Paint waterPaint = new Paint();
-        waterPaint.setShader(new LinearGradient(
-            0, tankT, 0, tankB,
-            new int[]{ 0xEE00B4D8, 0xEE0077B6, 0xEE023E8A },
-            new float[]{ 0.0f, 0.45f, 1.0f },
-            Shader.TileMode.CLAMP
-        ));
-        canvas.drawRoundRect(tankL, tankT, tankR, tankB, 18f, 18f, waterPaint);
+        if (waterPaint != null) {
+            canvas.drawRoundRect(tankL, tankT, tankR, tankB, 18f, 18f, waterPaint);
+        }
 
         // Seabed Coral Gravel & Rocks
         paint.setColor(0xFFE0A96D); // Sandy coral gravel
@@ -339,59 +407,105 @@ public class AquariumView extends View {
             renderFish(canvas, f);
         }
 
-        // Rising Heart Bubbles
+        // Rising Heart & Coin Bubbles
         for (HeartBubble hb : hearts) {
-            textPaint.setColor(0xFFFF4081);
+            textPaint.setColor(hb.symbol.contains("🪙") ? 0xFFFFD700 : 0xFFFF4081);
             textPaint.setAlpha((int)(hb.alpha * 255));
             textPaint.setTextSize(hb.size);
-            canvas.drawText("❤️", hb.x, hb.y, textPaint);
+            canvas.drawText(hb.symbol, hb.x, hb.y, textPaint);
         }
+        textPaint.setAlpha(255);
 
         // Glass Gloss Reflection
-        Paint glossPaint = new Paint();
-        glossPaint.setColor(0x18FFFFFF);
-        Path gloss = new Path();
-        gloss.moveTo(tankL, tankT);
-        gloss.lineTo(tankL + 220f, tankT);
-        gloss.lineTo(tankL + 80f, tankB);
-        gloss.lineTo(tankL, tankB);
-        gloss.close();
-        canvas.drawPath(gloss, glossPaint);
+        canvas.drawPath(glossPath, glossPaint);
 
-        // Top Food Dropper Tool
-        renderFoodDropper(canvas, dropperX, tankT);
+        // Top Food Dropper Tool with tilt animation & cooldown ring
+        renderFoodDropper(canvas, dropperX, tankT, now);
 
-        // Title and Interactive Guide Banner
+        // Minimal Title
         textPaint.setTextAlign(Paint.Align.CENTER);
         textPaint.setColor(0xFFFFD166);
-        textPaint.setTextSize(26f);
+        textPaint.setTextSize(28f);
         textPaint.setFakeBoldText(true);
-        canvas.drawText("🐠 我的客廳水族箱 (Living Room Aquarium)", w / 2f, 110f, textPaint);
+        canvas.drawText("🐠 快樂水族箱", w / 2f, tankT * 0.62f, textPaint);
 
-        // Live Feeding Notice Banner
-        textPaint.setTextSize(21f);
-        textPaint.setColor(0xFF48CAE4);
-        canvas.drawText(feedNotice, w / 2f, tankT - 18f, textPaint);
-
-        // Bottom Remote Instructions
-        textPaint.setTextSize(19f);
-        textPaint.setColor(Color.WHITE);
-        canvas.drawText("🎮 遙控器指南：[◀ / ▶ 方向鍵] 移動飼料罐  |  [OK 鍵] 投下小蝦米餅乾 (看魚兒爭食吐愛心泡泡！)  |  [返回鍵] 返回主選單", w / 2f, h - 35f, textPaint);
+        // Icon-First Bottom Remote Guide
+        renderBottomGuide(canvas, w, h);
         textPaint.setTextAlign(Paint.Align.LEFT);
     }
 
-    private void renderFoodDropper(Canvas canvas, float x, float y) {
-        // Shaker Container
-        paint.setColor(0xFFFFD54F);
-        canvas.drawRoundRect(x - 22f, y - 48f, x + 22f, y - 6f, 8f, 8f, paint);
-        paint.setColor(0xFFFF8F00); // Shaker lid
-        canvas.drawRect(x - 14f, y - 6f, x + 14f, y + 6f, paint);
+    private void renderFoodDropper(Canvas canvas, float x, float y, long now) {
+        long elapsed = now - lastFeedTime;
+        float tiltDeg = 0f;
+        float dipY = 0f;
+        if (elapsed >= 0 && elapsed < DROPPER_ANIM_MS) {
+            float t = elapsed / (float) DROPPER_ANIM_MS;
+            tiltDeg = (float) Math.sin(t * Math.PI) * 38f;
+            dipY = (float) Math.sin(t * Math.PI) * 10f;
+        }
 
-        textPaint.setTextSize(16f);
-        textPaint.setColor(0xFF3E2723);
+        // Pulsing left/right directional hint arrows beside jar
+        int arrowAlpha = (int) (150 + 100 * Math.sin(now / 220.0));
         textPaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("飼料", x, y - 22f, textPaint);
-        textPaint.setTextAlign(Paint.Align.LEFT);
+        textPaint.setTextSize(22f);
+        textPaint.setColor(Color.argb(arrowAlpha, 255, 255, 255));
+        canvas.drawText("◀", x - 44f, y - 16f, textPaint);
+        canvas.drawText("▶", x + 44f, y - 16f, textPaint);
+
+        // Shaker Container with tilt
+        canvas.save();
+        canvas.translate(x, y - 20f + dipY);
+        canvas.rotate(tiltDeg);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(0xFFFFD54F);
+        canvas.drawRoundRect(-22f, -28f, 22f, 14f, 8f, 8f, paint);
+        paint.setColor(0xFFFF8F00); // Shaker lid
+        canvas.drawRect(-14f, 14f, 14f, 26f, paint);
+        // 3 cookie dots instead of text
+        paint.setColor(0xFFE65100);
+        canvas.drawCircle(-8f, -8f, 4.5f, paint);
+        canvas.drawCircle(8f, -12f, 4.5f, paint);
+        canvas.drawCircle(1f, 1f, 4.5f, paint);
+        canvas.restore();
+
+        // Mini cooldown arc above jar
+        if (elapsed >= 0 && elapsed < FEED_COOLDOWN_MS) {
+            float prog = elapsed / (float) FEED_COOLDOWN_MS;
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(4f);
+            paint.setColor(0xFF00E5FF);
+            canvas.drawArc(x - 16f, y - 78f, x + 16f, y - 46f, -90f, 360f * prog, false, paint);
+            paint.setStyle(Paint.Style.FILL);
+        }
+    }
+
+    private void renderBottomGuide(Canvas canvas, int w, int h) {
+        String[] pills = { "◀ ▶  🥫", "⭕ OK  🍪", "↩️  🏠" };
+        float pillW = 175f;
+        float pillH = 44f;
+        float gap = 28f;
+        float totalW = pills.length * pillW + (pills.length - 1) * gap;
+        float startX = (w - totalW) / 2f;
+        float py = h - 58f;
+
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setTextSize(22f);
+        textPaint.setFakeBoldText(true);
+
+        for (int i = 0; i < pills.length; i++) {
+            float px = startX + i * (pillW + gap);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(0xCC1C2541);
+            canvas.drawRoundRect(px, py, px + pillW, py + pillH, 22f, 22f, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(2.5f);
+            paint.setColor(0x8848CAE4);
+            canvas.drawRoundRect(px, py, px + pillW, py + pillH, 22f, 22f, paint);
+            paint.setStyle(Paint.Style.FILL);
+
+            textPaint.setColor(Color.WHITE);
+            canvas.drawText(pills[i], px + pillW / 2f, py + 30f, textPaint);
+        }
     }
 
     private void renderAquariumCastle(Canvas canvas, float cx, float base) {

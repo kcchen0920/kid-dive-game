@@ -1,6 +1,8 @@
 package com.babyshark.tv;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -39,6 +41,8 @@ public class DiverGameView extends View {
     private final Paint lightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint envPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint abyssOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Bitmap kidHeadBitmap;
+    private final RectF kidHeadRect = new RectF(-4f, -36f, 48f, 16f);
 
     // Player Dave Diver State
     private float diverX = 850f;
@@ -269,6 +273,7 @@ public class DiverGameView extends View {
         setFocusable(true);
         setFocusableInTouchMode(true);
         state = GameState.get(context);
+        kidHeadBitmap = BitmapFactory.decodeResource(context.getResources(), R.drawable.kid_diver_head);
         initGame();
     }
 
@@ -2462,15 +2467,42 @@ public class DiverGameView extends View {
         diverPaint.setColor(0xFF0077BE);
         canvas.drawRoundRect(-24f, -24f, 26f, 24f, 16f, 16f, diverPaint);
 
-        // Mask & Hood
-        diverPaint.setColor(0xFF003865);
-        canvas.drawCircle(18f, -2f, 18f, diverPaint);
+        // Scuba Collar & Clear Glass Diving Helmet with Real Kid Face
         diverPaint.setColor(0xFFFFD166);
-        canvas.drawRoundRect(14f, -14f, 36f, 10f, 6f, 6f, diverPaint);
-        diverPaint.setColor(0xFF00E5FF);
-        canvas.drawCircle(25f, -2f, 7f, diverPaint);
-        diverPaint.setColor(Color.WHITE);
-        canvas.drawCircle(23f, -4f, 2.5f, diverPaint);
+        canvas.drawRoundRect(6f, -6f, 34f, 14f, 6f, 6f, diverPaint);
+
+        if (kidHeadBitmap != null) {
+            // Soft helmet back glow
+            diverPaint.setColor(0x3300E5FF);
+            canvas.drawCircle(22f, -10f, 30f, diverPaint);
+
+            // Real kid portrait (no background)
+            canvas.drawBitmap(kidHeadBitmap, null, kidHeadRect, diverPaint);
+
+            // Crystal-clear scuba helmet glass dome & highlight
+            diverPaint.setStyle(Paint.Style.STROKE);
+            diverPaint.setStrokeWidth(3.5f);
+            diverPaint.setColor(0xCC80DEEA);
+            canvas.drawCircle(22f, -10f, 30f, diverPaint);
+            diverPaint.setStyle(Paint.Style.FILL);
+            diverPaint.setColor(0x55FFFFFF);
+            canvas.drawCircle(11f, -25f, 5f, diverPaint);
+
+            // Mini headlamp on top of helmet
+            diverPaint.setColor(0xFFFFD166);
+            canvas.drawRoundRect(18f, -44f, 32f, -36f, 4f, 4f, diverPaint);
+            diverPaint.setColor(0xFFFFF59D);
+            canvas.drawCircle(32f, -40f, 4f, diverPaint);
+        } else {
+            diverPaint.setColor(0xFF003865);
+            canvas.drawCircle(18f, -2f, 18f, diverPaint);
+            diverPaint.setColor(0xFFFFD166);
+            canvas.drawRoundRect(14f, -14f, 36f, 10f, 6f, 6f, diverPaint);
+            diverPaint.setColor(0xFF00E5FF);
+            canvas.drawCircle(25f, -2f, 7f, diverPaint);
+            diverPaint.setColor(Color.WHITE);
+            canvas.drawCircle(23f, -4f, 2.5f, diverPaint);
+        }
 
         // Weapon in hand: Harpoon, Bubble Gun, or Camera
         if (currentWeapon == WeaponMode.HARPOON) {

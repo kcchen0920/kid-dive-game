@@ -44,6 +44,23 @@ public class DiverGameView extends View {
     private final Bitmap kidHeadBitmap;
     private final RectF kidHeadRect = new RectF(-22f, -74f, 86f, 34f);
     private final RectF hudAvatarRect = new RectF(34f, 27f, 114f, 107f);
+    private final Path avatarClipPath = new Path();
+    private float avatarCelebrateTimer = 0f;
+    private long lastShopTapTime = 0L;
+
+    private static class TouchRipple {
+        float x, y, life, maxLife;
+    }
+    private final List<TouchRipple> touchRipples = new ArrayList<>();
+
+    private void spawnTouchRipple(float x, float y) {
+        TouchRipple tr = new TouchRipple();
+        tr.x = x;
+        tr.y = y;
+        tr.maxLife = 0.42f;
+        tr.life = tr.maxLife;
+        touchRipples.add(tr);
+    }
 
     // Player Dave Diver State
     private float diverX = 850f;
@@ -613,6 +630,7 @@ public class DiverGameView extends View {
             case MotionEvent.ACTION_POINTER_DOWN: {
                 float tx = event.getX(actionIndex);
                 float ty = event.getY(actionIndex);
+                spawnTouchRipple(tx, ty);
 
                 // 1. Top-Center Weapon Switcher Pill
                 if (tx >= w / 2f - 190f && tx <= w / 2f + 190f && ty >= 18f && ty <= 102f) {
@@ -620,9 +638,16 @@ public class DiverGameView extends View {
                     return true;
                 }
 
-                // 2. Top-Right "🏠 商店" Button
+                // 2. Top-Right "🏠 商店" Button (Double-tap guard against accidental exit)
                 if (tx >= w - 205f && tx <= w - 35f && ty >= 118f && ty <= 178f) {
-                    surfaceAndReturn();
+                    long nowMs = SystemClock.uptimeMillis();
+                    if (nowMs - lastShopTapTime <= 1200L) {
+                        surfaceAndReturn();
+                    } else {
+                        lastShopTapTime = nowMs;
+                        SoundManager.get(getContext()).playBubble();
+                        addFX(diverX, diverY - 65f, "🏠 再點一次回商店！", 0xFF80D8FF, 28f);
+                    }
                     return true;
                 }
 
@@ -750,6 +775,7 @@ public class DiverGameView extends View {
                 state.save();
                 SoundManager.get(getContext()).playChest();
                 spawnBurst(c.x, c.y - 20f, 0xFFFFD700, 18);
+                avatarCelebrateTimer = 0.55f;
                 addFX(c.x, c.y - 45f, "🎁 打開 " + c.name + "！獲得 +" + c.rewardCoins + " 貝殼金幣！", 0xFFFFD700, 36f);
                 if (listener != null) listener.onCoinsUpdated(state.coins);
                 return;
@@ -766,6 +792,7 @@ public class DiverGameView extends View {
                 state.save();
                 SoundManager.get(getContext()).playPearl();
                 spawnBurst(pc.x, pc.y - 15f, 0xFFE040FB, 16);
+                avatarCelebrateTimer = 0.55f;
                 addFX(pc.x, pc.y - 50f, "🦪 拾獲璀璨大珍珠！+" + pc.rewardCoins + " 貝殼金幣！", 0xFFE040FB, 34f);
                 if (listener != null) listener.onCoinsUpdated(state.coins);
                 return;
@@ -779,6 +806,7 @@ public class DiverGameView extends View {
                 state.addCaughtFish(f.name, f.value + 35, f.weightKg);
                 SoundManager.get(getContext()).playUpgrade();
                 spawnBurst(f.x, f.y, 0xFFFF80AB, 16);
+                avatarCelebrateTimer = 0.55f;
                 addFX(diverX, diverY - 60f, "🌟 溫柔活捉 " + f.name + "！", 0xFFFFD700, 34f);
                 addFX(diverX, diverY - 20f, "💖 獲得愛心活捉獎勵 +" + (f.value + 35) + " 金幣！", 0xFF00E676, 30f);
                 if (listener != null) listener.onCoinsUpdated(state.coins);
@@ -885,6 +913,16 @@ public class DiverGameView extends View {
         invincibleTimer = Math.max(0f, invincibleTimer - dt);
         screenShakeTimer = Math.max(0f, screenShakeTimer - dt);
         hurtFlashTimer = Math.max(0f, hurtFlashTimer - dt);
+        avatarCelebrateTimer = Math.max(0f, avatarCelebrateTimer - dt);
+
+        Iterator<TouchRipple> trIt = touchRipples.iterator();
+        while (trIt.hasNext()) {
+            TouchRipple tr = trIt.next();
+            tr.life -= dt;
+            if (tr.life <= 0f) {
+                trIt.remove();
+            }
+        }
 
         // Smooth horizontal facing interpolation
         facingScale += (targetFacingScale - facingScale) * Math.min(1f, dt * 12f);
@@ -1233,6 +1271,7 @@ public class DiverGameView extends View {
                     state.addCaughtFish(hookedFish.name, hookedFish.value, hookedFish.weightKg);
                     SoundManager.get(getContext()).playCatch();
                     spawnBurst(diverX, diverY, 0xFFFFD700, 14);
+                    avatarCelebrateTimer = 0.55f;
                     addFX(diverX, diverY - 65f, "⭐ 捕獲 " + hookedFish.name + " (" + hookedFish.weightKg + "kg)！", 0xFFFFD700, 34f);
                     addFX(diverX, diverY - 25f, "💰 自動兌換金幣 +" + hookedFish.value + " 貝殼金幣！", 0xFF00E676, 30f);
                     if (listener != null) listener.onCoinsUpdated(state.coins);
@@ -2399,19 +2438,6 @@ public class DiverGameView extends View {
     }
 
     private void renderDaveDiver(Canvas canvas, long now) {
-        if (invincibleTimer > 0f && ((int)(invincibleTimer * 10f) % 2 == 0)) {
-            // Draw gentle protective bubble shield even during blink frame
-            diverPaint.setStyle(Paint.Style.FILL);
-            diverPaint.setColor(0x5500E5FF);
-            canvas.drawCircle(diverX, diverY, 52f, diverPaint);
-            diverPaint.setStyle(Paint.Style.STROKE);
-            diverPaint.setStrokeWidth(3.5f);
-            diverPaint.setColor(0xCCFFFFFF);
-            canvas.drawCircle(diverX, diverY, 52f, diverPaint);
-            diverPaint.setStyle(Paint.Style.FILL);
-            return;
-        }
-
         canvas.save();
         canvas.translate(diverX, diverY);
         canvas.scale(facingScale, 1.0f);
@@ -2483,14 +2509,25 @@ public class DiverGameView extends View {
             diverPaint.setAlpha(255);
             canvas.drawBitmap(kidHeadBitmap, null, kidHeadRect, diverPaint);
 
-            // Crystal-clear scuba helmet glass dome & highlight
+            // Crystal-clear scuba helmet glass dome & 3D highlight arc
             diverPaint.setStyle(Paint.Style.STROKE);
             diverPaint.setStrokeWidth(4.5f);
-            diverPaint.setColor(0xDD80DEEA);
+            diverPaint.setColor(mountedCreature != null ? 0xEEFFD700 : 0xDD80DEEA);
             canvas.drawCircle(32f, -20f, 58f, diverPaint);
+            diverPaint.setStrokeWidth(3.5f);
+            diverPaint.setColor(0x88FFFFFF);
+            canvas.drawArc(32f - 48f, -20f - 48f, 32f + 48f, -20f + 48f, 205f, 58f, false, diverPaint);
             diverPaint.setStyle(Paint.Style.FILL);
             diverPaint.setColor(0x66FFFFFF);
-            canvas.drawCircle(10f, -50f, 8f, diverPaint);
+            canvas.drawCircle(10f, -50f, 7f, diverPaint);
+
+            // Low-O2 mini bubbles inside helmet
+            if (oxygen / maxOxygen < 0.25f) {
+                float bob = (float) ((now % 900) / 900.0);
+                diverPaint.setColor(0x99E0F7FA);
+                canvas.drawCircle(48f, -5f - bob * 32f, 4.5f, diverPaint);
+                canvas.drawCircle(56f, 5f - ((bob + 0.5f) % 1f) * 28f, 3.5f, diverPaint);
+            }
 
             // Mini headlamp on top of helmet
             diverPaint.setColor(0xFFFFD166);
@@ -2537,6 +2574,19 @@ public class DiverGameView extends View {
         }
 
         canvas.restore();
+
+        // Pulsing protective bubble shield (never hides the kid!)
+        if (invincibleTimer > 0f) {
+            float shieldPulse = 1.0f + 0.08f * (float) Math.sin(now / 70.0);
+            diverPaint.setStyle(Paint.Style.FILL);
+            diverPaint.setColor(0x3300E5FF);
+            canvas.drawCircle(diverX, diverY - 8f, 80f * shieldPulse, diverPaint);
+            diverPaint.setStyle(Paint.Style.STROKE);
+            diverPaint.setStrokeWidth(4.5f);
+            diverPaint.setColor(0xCC80DEEA);
+            canvas.drawCircle(diverX, diverY - 8f, 80f * shieldPulse, diverPaint);
+            diverPaint.setStyle(Paint.Style.FILL);
+        }
     }
 
     private void drawAimReticle(Canvas canvas, RealisticFish target) {
@@ -2605,14 +2655,36 @@ public class DiverGameView extends View {
 
         int oxColor = oxPercent > 0.5f ? 0xFF00E676 : (oxPercent > 0.25f ? 0xFFFFD166 : 0xFFFF1744);
 
-        // Circular Kid Avatar + O2 Ring
+        // Circular Kid Avatar + O2 Ring (with clipPath, celebrate bounce, & low-O2 wiggle)
         float avCx = 74f, avCy = 67f, avR = 45f;
+        float avScale = 1.0f;
+        if (avatarCelebrateTimer > 0f) {
+            float t = avatarCelebrateTimer / 0.55f;
+            avScale = 1.0f + 0.22f * (float) Math.sin(t * Math.PI);
+        }
+        float avWiggleX = (oxPercent < 0.25f) ? (float) Math.sin(SystemClock.uptimeMillis() / 90.0) * 4f : 0f;
+
+        canvas.save();
+        canvas.translate(avCx + avWiggleX, avCy);
+        canvas.scale(avScale, avScale);
+        canvas.translate(-avCx, -avCy);
+
+        if (avatarCelebrateTimer > 0f) {
+            hudPaint.setColor(0x66FFD700);
+            canvas.drawCircle(avCx, avCy, avR + 8f, hudPaint);
+        }
+
         hudPaint.setColor(0xFF00284D);
         canvas.drawCircle(avCx, avCy, avR, hudPaint);
         if (kidHeadBitmap != null) {
+            canvas.save();
+            avatarClipPath.reset();
+            avatarClipPath.addCircle(avCx, avCy, avR - 3f, Path.Direction.CW);
+            canvas.clipPath(avatarClipPath);
             hudPaint.setColor(Color.WHITE);
             hudPaint.setAlpha(255);
             canvas.drawBitmap(kidHeadBitmap, null, hudAvatarRect, hudPaint);
+            canvas.restore();
         }
         // Background track ring
         hudPaint.setStyle(Paint.Style.STROKE);
@@ -2623,6 +2695,17 @@ public class DiverGameView extends View {
         hudPaint.setColor(oxColor);
         canvas.drawArc(avCx - avR, avCy - avR, avCx + avR, avCy + avR, -90f, 360f * oxPercent, false, hudPaint);
         hudPaint.setStyle(Paint.Style.FILL);
+
+        // Low-O2 mini dolphin helper badge on avatar corner
+        if (oxPercent < 0.25f) {
+            hudPaint.setColor(0xEEFF4081);
+            canvas.drawCircle(avCx + 30f, avCy + 28f, 16f, hudPaint);
+            textPaint.setTextSize(18f);
+            textPaint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("🐬", avCx + 30f, avCy + 34f, textPaint);
+            textPaint.setTextAlign(Paint.Align.LEFT);
+        }
+        canvas.restore();
 
         // Horizontal O2 Bar beside avatar
         hudPaint.setColor(0x40FFFFFF);
@@ -2695,22 +2778,45 @@ public class DiverGameView extends View {
         textPaint.setTextAlign(Paint.Align.CENTER);
         canvas.drawText("🏠 商店", w - 120f, 156f, textPaint);
 
-        // Pad / Touch Controls: Left Virtual Joystick
+        // Pad / Touch Controls: Left Virtual Joystick (breathing idle arrows)
         float jx = isTouchJoystickActive ? joystickOriginX : 145f;
         float jy = isTouchJoystickActive ? joystickOriginY : h - 145f;
         float kx = isTouchJoystickActive ? joystickKnobX : 145f;
         float ky = isTouchJoystickActive ? joystickKnobY : h - 145f;
+        float idlePulse = isTouchJoystickActive ? 1.0f : (1.0f + 0.05f * (float) Math.sin(SystemClock.uptimeMillis() / 260.0));
 
         hudPaint.setStyle(Paint.Style.FILL);
         hudPaint.setColor(isTouchJoystickActive ? 0x4400E5FF : 0x26FFFFFF);
-        canvas.drawCircle(jx, jy, JOYSTICK_RADIUS, hudPaint);
+        canvas.drawCircle(jx, jy, JOYSTICK_RADIUS * idlePulse, hudPaint);
         hudPaint.setStyle(Paint.Style.STROKE);
         hudPaint.setStrokeWidth(3f);
-        hudPaint.setColor(isTouchJoystickActive ? 0xCC00E5FF : 0x66FFFFFF);
-        canvas.drawCircle(jx, jy, JOYSTICK_RADIUS, hudPaint);
+        hudPaint.setColor(isTouchJoystickActive ? 0xCC00E5FF : 0x77FFFFFF);
+        canvas.drawCircle(jx, jy, JOYSTICK_RADIUS * idlePulse, hudPaint);
         hudPaint.setStyle(Paint.Style.FILL);
-        hudPaint.setColor(isTouchJoystickActive ? 0xEE00E5FF : 0x88FFFFFF);
-        canvas.drawCircle(kx, ky, 38f, hudPaint);
+        hudPaint.setColor(isTouchJoystickActive ? 0xEE00E5FF : 0x99FFFFFF);
+        canvas.drawCircle(kx, ky, 38f * idlePulse, hudPaint);
+
+        if (!isTouchJoystickActive) {
+            textPaint.setColor(0xBBFFFFFF);
+            textPaint.setTextSize(18f);
+            textPaint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("▲", jx, jy - 64f, textPaint);
+            canvas.drawText("▼", jx, jy + 76f, textPaint);
+            canvas.drawText("◀", jx - 68f, jy + 6f, textPaint);
+            canvas.drawText("▶", jx + 68f, jy + 6f, textPaint);
+        }
+
+        // Expanding Touch Ripples
+        for (TouchRipple tr : touchRipples) {
+            float progress = 1f - (tr.life / tr.maxLife);
+            float rad = 18f + progress * 68f;
+            int alpha = (int) ((1f - progress) * 200);
+            hudPaint.setStyle(Paint.Style.STROKE);
+            hudPaint.setStrokeWidth(4f);
+            hudPaint.setColor(Color.argb(alpha, 128, 222, 234));
+            canvas.drawCircle(tr.x, tr.y, rad, hudPaint);
+        }
+        hudPaint.setStyle(Paint.Style.FILL);
 
         // Pad / Touch Controls: Bottom-Right Big Action & Switch Buttons
         float actCx = w - 125f;

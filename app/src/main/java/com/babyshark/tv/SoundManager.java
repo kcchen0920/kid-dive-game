@@ -119,6 +119,33 @@ public class SoundManager {
         }
     }
 
+    public boolean isMuted() {
+        return isMuted;
+    }
+
+    public boolean toggleMute() {
+        isMuted = !isMuted;
+        if (isMuted) {
+            pauseBgm();
+            try {
+                if (songPlayer != null && songPlayer.isPlaying()) {
+                    songPlayer.pause();
+                }
+            } catch (Exception ignored) {}
+        } else {
+            try {
+                if (currentSongResId != 0 && songPlayer != null) {
+                    songPlayer.start();
+                } else {
+                    startBgm();
+                }
+            } catch (Exception ignored) {
+                startBgm();
+            }
+        }
+        return isMuted;
+    }
+
     public void pauseBgm() {
         try {
             if (bgmPlayer != null && bgmPlayer.isPlaying()) {
@@ -151,7 +178,9 @@ public class SoundManager {
             if (songPlayer != null) {
                 songPlayer.setLooping(true);
                 songPlayer.setVolume(1.0f, 1.0f);
-                songPlayer.start();
+                if (!isMuted) {
+                    songPlayer.start();
+                }
                 Log.d(TAG, "playChildSong: playing song resId=" + resId);
             }
         } catch (Exception e) {

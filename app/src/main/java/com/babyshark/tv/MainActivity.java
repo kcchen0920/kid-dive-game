@@ -20,6 +20,7 @@ public class MainActivity extends AppCompatActivity {
     private View topNavBar;
     private Button btnReset;
     private Button btnExit;
+    private Button btnMute;
 
     private DiverGameView gameView;
     private ShopView shopView;
@@ -46,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
         btnAquarium = findViewById(R.id.btn_aquarium);
         btnReset = findViewById(R.id.btn_reset);
         btnExit = findViewById(R.id.btn_exit);
+        btnMute = findViewById(R.id.btn_mute);
 
         btnGame.setOnClickListener(v -> switchMode(Mode.GAME));
         btnShop.setOnClickListener(v -> switchMode(Mode.SHOP));
@@ -53,6 +55,11 @@ public class MainActivity extends AppCompatActivity {
         btnAquarium.setOnClickListener(v -> switchMode(Mode.AQUARIUM));
         btnReset.setOnClickListener(v -> showResetConfirmationDialog());
         btnExit.setOnClickListener(v -> showExitConfirmationDialog());
+        btnMute.setOnClickListener(v -> {
+            SoundManager.get(this).toggleMute();
+            updateMuteButton();
+        });
+        updateMuteButton();
 
         updateCoins();
         switchMode(Mode.GAME);
@@ -79,6 +86,13 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateCoins() {
         coinsText.setText("🐚 " + state.coins + " 金幣");
+    }
+
+    private void updateMuteButton() {
+        if (btnMute == null) return;
+        boolean muted = SoundManager.get(this).isMuted();
+        btnMute.setText(muted ? "🔇 靜音" : "🔊 音效");
+        btnMute.setTextColor(muted ? android.graphics.Color.parseColor("#FFCDD2") : android.graphics.Color.WHITE);
     }
 
     private void switchMode(Mode mode) {
@@ -191,6 +205,11 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MUTE || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
+            SoundManager.get(this).toggleMute();
+            updateMuteButton();
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_MENU) {
             if (currentMode == Mode.GAME) {
                 if (topNavBar.getVisibility() == View.VISIBLE) {

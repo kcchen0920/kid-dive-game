@@ -37,6 +37,7 @@ public class DiverGameView extends View {
     private final Paint hudPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint lightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint envPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint abyssOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     // Player Dave Diver State
     private float diverX = 850f;
@@ -1020,7 +1021,7 @@ public class DiverGameView extends View {
             float sdy = diverY - f.y;
             float sDist = (float) Math.hypot(sdx, sdy);
 
-            if (isSharkPredator && sDist < 350f && !bobo.isRescuing) {
+            if (isSharkPredator && sDist < 350f && !bobo.isRescuing && mountedCreature == null) {
                 f.isAttacking = true;
                 f.facing = (sdx > 0 ? 1f : -1f);
                 float chargeSpeed = (f.species == RealisticFish.Species.GREAT_SHARK ? 145f : 110f);
@@ -1040,7 +1041,7 @@ public class DiverGameView extends View {
                         diverVy += (sdy / sDist) * 220f;
 
                         SoundManager.get(getContext()).playHurt();
-                        addFX(diverX, diverY - 50f, "💥 受到鯊魚衝撞！-" + (int)loss + " 氧氣！", 0xFFFF1744, 34f);
+                        addFX(diverX, diverY - 50f, "🫧 哎呀！被鯊魚頂了一下！", 0xFFFFB74D, 32f);
 
                         if (oxygen <= 0f) {
                             triggerDolphinRescue();
@@ -1495,6 +1496,27 @@ public class DiverGameView extends View {
         textPaint.setAlpha(255);
 
         canvas.restore();
+
+        // Deep Abyssal 160m+ Headlamp Vignette Overlay (Dave the Diver atmosphere)
+        float depthMeters = Math.max(0f, (diverY - 140f) / 10f);
+        if (depthMeters > 160f) {
+            float darkFactor = Math.min(1f, (depthMeters - 160f) / 180f);
+            float focusX = (diverX - cameraX) + facingScale * 95f;
+            float focusY = (diverY - cameraY);
+            float beamRadius = state.getLightRadius() * 1.45f;
+            abyssOverlayPaint.setShader(new RadialGradient(
+                focusX, focusY, beamRadius,
+                new int[]{
+                    0x0000040E,
+                    Color.argb((int) (95 * darkFactor), 0, 6, 18),
+                    Color.argb((int) (185 * darkFactor), 0, 4, 14)
+                },
+                new float[]{ 0.0f, 0.55f, 1.0f },
+                Shader.TileMode.CLAMP
+            ));
+            canvas.drawRect(0, 0, w, h, abyssOverlayPaint);
+            abyssOverlayPaint.setShader(null);
+        }
 
         // Modern Dave the Diver TV HUD
         renderTVHUD(canvas, w, h);
@@ -2258,6 +2280,15 @@ public class DiverGameView extends View {
 
     private void renderDaveDiver(Canvas canvas, long now) {
         if (invincibleTimer > 0f && ((int)(invincibleTimer * 10f) % 2 == 0)) {
+            // Draw gentle protective bubble shield even during blink frame
+            diverPaint.setStyle(Paint.Style.FILL);
+            diverPaint.setColor(0x5500E5FF);
+            canvas.drawCircle(diverX, diverY, 52f, diverPaint);
+            diverPaint.setStyle(Paint.Style.STROKE);
+            diverPaint.setStrokeWidth(3.5f);
+            diverPaint.setColor(0xCCFFFFFF);
+            canvas.drawCircle(diverX, diverY, 52f, diverPaint);
+            diverPaint.setStyle(Paint.Style.FILL);
             return;
         }
 
@@ -2382,18 +2413,18 @@ public class DiverGameView extends View {
     }
 
     private void renderTVHUD(Canvas canvas, int w, int h) {
-        // Red Damage Flash
+        // Gentle Warm Orange Bump Flash (kid-friendly)
         if (hurtFlashTimer > 0f) {
-            hudPaint.setColor(0x3DFF0000);
+            hudPaint.setColor(0x2AFFAB40);
             canvas.drawRect(0, 0, w, h, hudPaint);
         }
 
         float oxPercent = Math.max(0f, oxygen / maxOxygen);
 
-        // Low O2 Pulsing Red Warning Vignette
+        // Low O2 Pulsing Warning Vignette + Dolphin Rescue Visual Badge
         if (oxPercent < 0.25f && !bobo.isRescuing && mountedCreature == null) {
             int pulseAlpha = (int)(45 + Math.sin(SystemClock.uptimeMillis() / 150.0) * 35);
-            hudPaint.setColor(Color.argb(pulseAlpha, 255, 0, 0));
+            hudPaint.setColor(Color.argb(pulseAlpha, 255, 82, 82));
             canvas.drawRect(0, 0, w, 14, hudPaint);
             canvas.drawRect(0, h - 14, w, h, hudPaint);
             canvas.drawRect(0, 0, 14, h, hudPaint);
@@ -2402,11 +2433,18 @@ public class DiverGameView extends View {
             // Sequence 3: Big Friendly Dolphin Rescue Alert Banner!
             hudPaint.setColor(0xEEFF4081);
             canvas.drawRoundRect(w * 0.25f, 15f, w * 0.75f, 75f, 16f, 16f, hudPaint);
+
+            float badgePulse = 1.0f + 0.14f * (float) Math.sin(SystemClock.uptimeMillis() / 130.0);
+            hudPaint.setColor(0xFF00E5FF);
+            canvas.drawCircle(w * 0.25f + 36f, 45f, 22f * badgePulse, hudPaint);
             textPaint.setColor(Color.WHITE);
+            textPaint.setTextSize(26f);
+            textPaint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("🐬", w * 0.25f + 36f, 54f, textPaint);
+
             textPaint.setTextSize(24f);
             textPaint.setFakeBoldText(true);
-            textPaint.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText("🐬 [按 OK 呼叫海豚波波救援！] 平安載回水面！", w / 2f, 52f, textPaint);
+            canvas.drawText("按 OK 呼叫海豚波波救援！", w / 2f + 16f, 52f, textPaint);
             textPaint.setTextAlign(Paint.Align.LEFT);
         }
 

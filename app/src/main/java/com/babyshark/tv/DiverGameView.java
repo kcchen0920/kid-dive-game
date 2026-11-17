@@ -42,8 +42,8 @@ public class DiverGameView extends View {
     private final Paint envPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint abyssOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Bitmap kidHeadBitmap;
-    private final RectF kidHeadRect = new RectF(-12f, -44f, 56f, 24f);
-    private final RectF hudAvatarRect = new RectF(40f, 33f, 108f, 101f);
+    private final RectF kidHeadRect = new RectF(-22f, -74f, 86f, 34f);
+    private final RectF hudAvatarRect = new RectF(34f, 27f, 114f, 107f);
 
     // Player Dave Diver State
     private float diverX = 850f;
@@ -2473,30 +2473,30 @@ public class DiverGameView extends View {
         canvas.drawRoundRect(6f, -6f, 34f, 14f, 6f, 6f, diverPaint);
 
         if (kidHeadBitmap != null) {
-            // Soft helmet back glow
+            // Soft helmet back glow (Big Q-version Chibi Head for 4-year-old visibility)
             diverPaint.setStyle(Paint.Style.FILL);
             diverPaint.setColor(0x3300E5FF);
-            canvas.drawCircle(22f, -10f, 36f, diverPaint);
+            canvas.drawCircle(32f, -20f, 58f, diverPaint);
 
-            // Real kid portrait (100% opaque!)
+            // Real kid portrait (100% opaque, big & clear!)
             diverPaint.setColor(Color.WHITE);
             diverPaint.setAlpha(255);
             canvas.drawBitmap(kidHeadBitmap, null, kidHeadRect, diverPaint);
 
             // Crystal-clear scuba helmet glass dome & highlight
             diverPaint.setStyle(Paint.Style.STROKE);
-            diverPaint.setStrokeWidth(3.5f);
+            diverPaint.setStrokeWidth(4.5f);
             diverPaint.setColor(0xDD80DEEA);
-            canvas.drawCircle(22f, -10f, 36f, diverPaint);
+            canvas.drawCircle(32f, -20f, 58f, diverPaint);
             diverPaint.setStyle(Paint.Style.FILL);
             diverPaint.setColor(0x66FFFFFF);
-            canvas.drawCircle(9f, -29f, 5.5f, diverPaint);
+            canvas.drawCircle(10f, -50f, 8f, diverPaint);
 
             // Mini headlamp on top of helmet
             diverPaint.setColor(0xFFFFD166);
-            canvas.drawRoundRect(18f, -50f, 32f, -42f, 4f, 4f, diverPaint);
+            canvas.drawRoundRect(24f, -86f, 44f, -75f, 5f, 5f, diverPaint);
             diverPaint.setColor(0xFFFFF59D);
-            canvas.drawCircle(32f, -46f, 4.5f, diverPaint);
+            canvas.drawCircle(45f, -80f, 6f, diverPaint);
         } else {
             diverPaint.setColor(0xFF003865);
             canvas.drawCircle(18f, -2f, 18f, diverPaint);
@@ -2606,7 +2606,7 @@ public class DiverGameView extends View {
         int oxColor = oxPercent > 0.5f ? 0xFF00E676 : (oxPercent > 0.25f ? 0xFFFFD166 : 0xFFFF1744);
 
         // Circular Kid Avatar + O2 Ring
-        float avCx = 74f, avCy = 67f, avR = 39f;
+        float avCx = 74f, avCy = 67f, avR = 45f;
         hudPaint.setColor(0xFF00284D);
         canvas.drawCircle(avCx, avCy, avR, hudPaint);
         if (kidHeadBitmap != null) {

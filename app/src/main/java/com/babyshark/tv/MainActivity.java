@@ -110,7 +110,17 @@ public class MainActivity extends AppCompatActivity {
             // Show top options clearly above non-game views (Shop, Theater, Aquarium)
             topNavBar.setVisibility(View.VISIBLE);
             if (mode == Mode.SHOP) {
-                shopView = new ShopView(this, coins -> updateCoins());
+                shopView = new ShopView(this, new ShopView.OnShopActionListener() {
+                    @Override
+                    public void onCoinsChanged(int coins) {
+                        updateCoins();
+                    }
+
+                    @Override
+                    public void onDiveRequested() {
+                        switchMode(Mode.GAME);
+                    }
+                });
                 contentFrame.addView(shopView);
                 shopView.requestFocus();
             } else if (mode == Mode.THEATER) {
@@ -126,20 +136,44 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showResetConfirmationDialog() {
-        new androidx.appcompat.app.AlertDialog.Builder(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert)
-            .setTitle("🔄 重新開始全新冒險？")
-            .setMessage("確定要將金幣、裝備與圖鑑重置，回到起點重新體驗小戴夫的水下大冒險嗎？")
-            .setPositiveButton("✅ 確定從頭開始", (dialog, which) -> {
-                state.resetGame();
-                updateCoins();
-                SoundManager.get(this).playUpgrade();
-                if (gameView != null) {
-                    gameView.initGame();
+        java.util.Random r = new java.util.Random();
+        int a = 2 + r.nextInt(7);
+        int b = 2 + r.nextInt(7);
+        int answer = a + b;
+        java.util.List<Integer> options = new java.util.ArrayList<>();
+        options.add(answer);
+        options.add(answer + 1);
+        options.add(Math.max(1, answer - 1));
+        java.util.Collections.shuffle(options, r);
+
+        String[] labels = new String[options.size()];
+        for (int i = 0; i < options.size(); i++) {
+            labels[i] = "🔢  " + options.get(i);
+        }
+
+        androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert)
+            .setTitle("🔒 家長確認：請選出 " + a + " + " + b + " = ?")
+            .setItems(labels, (d, which) -> {
+                if (options.get(which) == answer) {
+                    state.resetGame();
+                    updateCoins();
+                    SoundManager.get(this).playUpgrade();
+                    if (gameView != null) {
+                        gameView.initGame();
+                    }
+                    switchMode(Mode.GAME);
+                } else {
+                    SoundManager.get(this).playBubble();
+                    d.dismiss();
                 }
-                switchMode(Mode.GAME);
             })
-            .setNegativeButton("❌ 繼續冒險", (dialog, which) -> dialog.dismiss())
+            .setNegativeButton("✅ 繼續冒險 / 取消", (d, which) -> d.dismiss())
             .show();
+
+        Button cancelBtn = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE);
+        if (cancelBtn != null) {
+            cancelBtn.requestFocus();
+        }
     }
 
     private void showExitConfirmationDialog() {

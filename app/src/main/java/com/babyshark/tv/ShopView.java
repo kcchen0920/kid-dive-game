@@ -1,5 +1,7 @@
 package com.babyshark.tv;
 
+import android.animation.ObjectAnimator;
+import android.animation.PropertyValuesHolder;
 import android.content.Context;
 import android.graphics.Color;
 import android.view.Gravity;
@@ -10,12 +12,12 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 public class ShopView extends FrameLayout {
 
     public interface OnShopActionListener {
         void onCoinsChanged(int coins);
+        void onDiveRequested();
     }
 
     private final GameState state;
@@ -27,6 +29,7 @@ public class ShopView extends FrameLayout {
     private GearCard cardFins;
     private GearCard cardHarpoon;
     private GearCard cardLight;
+    private final TextView btnDiveNow;
 
     public ShopView(Context context, OnShopActionListener listener) {
         super(context);
@@ -60,7 +63,7 @@ public class ShopView extends FrameLayout {
         header.addView(spacer, spLp);
 
         trophyBar = new TextView(context);
-        trophyBar.setTextSize(18f);
+        trophyBar.setTextSize(22f);
         trophyBar.setTextColor(Color.parseColor("#80D8FF"));
         trophyBar.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         header.addView(trophyBar);
@@ -82,34 +85,93 @@ public class ShopView extends FrameLayout {
         cardTank = new GearCard(context, R.drawable.ic_gear_tank, "🤿 氧氣瓶", () -> {
             tryUpgrade(cardTank, 1);
         });
+        cardTank.setId(View.generateViewId());
         cardRow.addView(cardTank, cardLp);
 
         // Card 2: Fins
         cardFins = new GearCard(context, R.drawable.ic_gear_fins, "🐬 潛水腳蹼", () -> {
             tryUpgrade(cardFins, 2);
         });
+        cardFins.setId(View.generateViewId());
         cardRow.addView(cardFins, cardLp);
 
         // Card 3: Harpoon
         cardHarpoon = new GearCard(context, R.drawable.ic_gear_harpoon, "🎯 魚叉槍", () -> {
             tryUpgrade(cardHarpoon, 3);
         });
+        cardHarpoon.setId(View.generateViewId());
         cardRow.addView(cardHarpoon, cardLp);
 
         // Card 4: Light
         cardLight = new GearCard(context, R.drawable.ic_gear_light, "🔦 探照燈", () -> {
             tryUpgrade(cardLight, 4);
         });
+        cardLight.setId(View.generateViewId());
         cardRow.addView(cardLight, cardLp);
 
         root.addView(cardRow, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ));
 
+        // 3. Kid-friendly Giant "Dive Now!" Button below cards
+        btnDiveNow = new TextView(context) {
+            @Override
+            public boolean onKeyDown(int keyCode, KeyEvent event) {
+                if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_BUTTON_A) {
+                    SoundManager.get(getContext()).playBubble();
+                    if (listener != null) listener.onDiveRequested();
+                    return true;
+                }
+                return super.onKeyDown(keyCode, event);
+            }
+        };
+        btnDiveNow.setId(View.generateViewId());
+        btnDiveNow.setText("🌊  潛水 GO!  🤿");
+        btnDiveNow.setTextSize(26f);
+        btnDiveNow.setTextColor(Color.WHITE);
+        btnDiveNow.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        btnDiveNow.setGravity(Gravity.CENTER);
+        btnDiveNow.setPadding(48, 18, 48, 18);
+        btnDiveNow.setBackgroundResource(R.drawable.price_badge_selector);
+        btnDiveNow.setFocusable(true);
+        btnDiveNow.setClickable(true);
+        btnDiveNow.setOnFocusChangeListener((v, hasFocus) -> {
+            v.animate().scaleX(hasFocus ? 1.07f : 1.0f).scaleY(hasFocus ? 1.07f : 1.0f).setDuration(150).start();
+        });
+        btnDiveNow.setOnClickListener(v -> {
+            SoundManager.get(getContext()).playBubble();
+            if (listener != null) listener.onDiveRequested();
+        });
+
+        LinearLayout.LayoutParams diveLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        diveLp.topMargin = (int) (22 * context.getResources().getDisplayMetrics().density);
+        root.addView(btnDiveNow, diveLp);
+
+        // D-Pad Focus Wiring
+        cardTank.setNextFocusDownId(btnDiveNow.getId());
+        cardFins.setNextFocusDownId(btnDiveNow.getId());
+        cardHarpoon.setNextFocusDownId(btnDiveNow.getId());
+        cardLight.setNextFocusDownId(btnDiveNow.getId());
+        btnDiveNow.setNextFocusUpId(cardTank.getId());
+
         addView(root);
         updateUI();
 
         post(() -> cardTank.requestFocus());
+    }
+
+    private void playRejectFeedback(GearCard card, boolean isCoinShortage) {
+        ObjectAnimator.ofFloat(card, "translationX", 0f, -18f, 18f, -14f, 14f, -6f, 6f, 0f)
+            .setDuration(360)
+            .start();
+        SoundManager.get(getContext()).playBubble();
+        if (isCoinShortage) {
+            topCoinsBadge.animate().scaleX(1.16f).scaleY(1.16f).setDuration(120)
+                .withEndAction(() -> topCoinsBadge.animate().scaleX(1.0f).scaleY(1.0f).setDuration(120).start())
+                .start();
+        }
     }
 
     private void tryUpgrade(GearCard card, int gearType) {
@@ -122,20 +184,19 @@ public class ShopView extends FrameLayout {
         }
 
         if (currentLevel >= GameState.MAX_TIER) {
-            Toast.makeText(getContext(), "👑 該裝備已達傳奇神級 MAX！", Toast.LENGTH_SHORT).show();
+            playRejectFeedback(card, false);
             return;
         }
 
         // Check Milestone Challenge
         if (!state.isChallengeMet(currentLevel)) {
-            String req = state.getChallengeRequirementText(currentLevel);
-            Toast.makeText(getContext(), "🔒 挑戰未完成：" + req, Toast.LENGTH_LONG).show();
+            playRejectFeedback(card, false);
             return;
         }
 
         int cost = GameState.getTierCost(currentLevel);
         if (state.coins < cost) {
-            Toast.makeText(getContext(), "🐚 金幣不足！還需要 " + (cost - state.coins) + " 金幣", Toast.LENGTH_SHORT).show();
+            playRejectFeedback(card, true);
             return;
         }
 
@@ -152,23 +213,35 @@ public class ShopView extends FrameLayout {
         SoundManager.get(getContext()).playUpgrade();
         card.animate().scaleX(1.18f).scaleY(1.18f).setDuration(120)
             .setInterpolator(new OvershootInterpolator())
-            .withEndAction(() -> card.animate().scaleX(1.06f).scaleY(1.06f).setDuration(100).start())
+            .withEndAction(() -> card.animate().scaleX(card.hasFocus() ? 1.06f : 1.0f).scaleY(card.hasFocus() ? 1.06f : 1.0f).setDuration(100).start())
+            .start();
+        topCoinsBadge.animate().scaleX(1.14f).scaleY(1.14f).setDuration(120)
+            .withEndAction(() -> topCoinsBadge.animate().scaleX(1.0f).scaleY(1.0f).setDuration(120).start())
             .start();
 
-        Toast.makeText(getContext(), "🎉 裝備突破升級！邁向更高階大師！", Toast.LENGTH_SHORT).show();
         updateUI();
         if (listener != null) listener.onCoinsChanged(state.coins);
     }
 
     public void updateUI() {
-        topCoinsBadge.setText("🐚 " + state.coins + " 金幣");
+        topCoinsBadge.setText("🐚 " + state.coins);
 
-        trophyBar.setText("🏆 狩獵徽章: 🦈小鯊x" + state.babySharkCount + "  🦈礁鯊x" + state.reefSharkCount + "  🐟巨鮪x" + state.tunaCount + "  👑大白鯊x" + state.greatSharkCount);
+        trophyBar.setText("🏆  🦈×" + state.babySharkCount + "   🐋×" + state.reefSharkCount + "   🐟×" + state.tunaCount + "   👑×" + state.greatSharkCount);
 
         cardTank.update(state.oxygenLevel, state);
         cardFins.update(state.speedLevel, state);
         cardHarpoon.update(state.harpoonLevel, state);
         cardLight.update(state.lightLevel, state);
+    }
+
+    private static String getChallengeIconBadge(int level) {
+        switch (level) {
+            case 3: return "🔒 🦈 0/1";
+            case 5: return "🔒 🐋 0/1";
+            case 6: return "🔒 🐟 0/1";
+            case 7: return "🔒 👑 0/1";
+            default: return "";
+        }
     }
 
     private static class GearCard extends LinearLayout {
@@ -178,6 +251,7 @@ public class ShopView extends FrameLayout {
         private final TextView challengeNotice;
         private final TextView priceBadge;
         private final Runnable onAction;
+        private ObjectAnimator upgradePulseAnim;
 
         public GearCard(Context context, int iconRes, String title, Runnable onAction) {
             super(context);
@@ -240,6 +314,34 @@ public class ShopView extends FrameLayout {
             });
         }
 
+        private void startUpgradePulse() {
+            if (upgradePulseAnim != null) return;
+            upgradePulseAnim = ObjectAnimator.ofPropertyValuesHolder(
+                priceBadge,
+                PropertyValuesHolder.ofFloat("scaleX", 1.0f, 1.09f),
+                PropertyValuesHolder.ofFloat("scaleY", 1.0f, 1.09f)
+            );
+            upgradePulseAnim.setDuration(650);
+            upgradePulseAnim.setRepeatMode(ObjectAnimator.REVERSE);
+            upgradePulseAnim.setRepeatCount(ObjectAnimator.INFINITE);
+            upgradePulseAnim.start();
+        }
+
+        private void stopUpgradePulse() {
+            if (upgradePulseAnim != null) {
+                upgradePulseAnim.cancel();
+                upgradePulseAnim = null;
+            }
+            priceBadge.setScaleX(1.0f);
+            priceBadge.setScaleY(1.0f);
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            stopUpgradePulse();
+            super.onDetachedFromWindow();
+        }
+
         public void update(int level, GameState state) {
             // Build 8-star meter: ★ for active, ☆ for remaining
             StringBuilder sb = new StringBuilder();
@@ -253,8 +355,8 @@ public class ShopView extends FrameLayout {
             starsView.setText(sb.toString().trim());
 
             if (level >= GameState.MAX_TIER) {
-                challengeNotice.setText("🌟 巔峰傳奇裝備");
-                challengeNotice.setTextColor(Color.parseColor("#00E676"));
+                stopUpgradePulse();
+                challengeNotice.setVisibility(View.INVISIBLE);
                 priceBadge.setText("👑 MAX");
                 priceBadge.setTextColor(Color.parseColor("#FFD700"));
                 priceBadge.setBackgroundColor(Color.parseColor("#4DFFD700"));
@@ -265,20 +367,25 @@ public class ShopView extends FrameLayout {
             boolean challengeMet = state.isChallengeMet(level);
 
             if (!challengeMet) {
-                challengeNotice.setText(state.getChallengeRequirementText(level));
+                stopUpgradePulse();
+                challengeNotice.setVisibility(View.VISIBLE);
+                challengeNotice.setText(getChallengeIconBadge(level));
                 challengeNotice.setTextColor(Color.parseColor("#FF5252"));
-                priceBadge.setText("🔒 需解鎖挑戰");
+                priceBadge.setText("🔒  🐚 " + cost);
                 priceBadge.setTextColor(Color.parseColor("#CFD8DC"));
                 priceBadge.setBackgroundColor(Color.parseColor("#4D37474F"));
             } else {
-                challengeNotice.setText("✅ 挑戰已達成！");
+                challengeNotice.setVisibility(View.VISIBLE);
+                challengeNotice.setText("✅");
                 challengeNotice.setTextColor(Color.parseColor("#00E676"));
 
                 if (state.coins >= cost) {
                     priceBadge.setText("🐚 " + cost + "  ⬆️");
                     priceBadge.setTextColor(Color.WHITE);
                     priceBadge.setBackgroundResource(R.drawable.price_badge_selector);
+                    startUpgradePulse();
                 } else {
+                    stopUpgradePulse();
                     priceBadge.setText("🐚 " + cost + "  🔒");
                     priceBadge.setTextColor(Color.parseColor("#B0BEC5"));
                     priceBadge.setBackgroundColor(Color.parseColor("#4D37474F"));

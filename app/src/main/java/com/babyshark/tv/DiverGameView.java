@@ -188,6 +188,33 @@ public class DiverGameView extends View {
     }
     private final List<GameFX> effects = new ArrayList<>();
 
+    // Celebratory Burst Particles (stars / coins / bubbles for 4-year-old delight)
+    private static class BurstParticle {
+        float x, y, vx, vy, size, life, maxLife;
+        int color;
+        boolean isStar;
+    }
+    private final List<BurstParticle> burstParticles = new ArrayList<>();
+
+    private void spawnBurst(float x, float y, int baseColor, int count) {
+        int[] palette = { baseColor, 0xFFFFD700, 0xFF00E5FF, 0xFFFF80AB, 0xFF69F0AE };
+        for (int i = 0; i < count; i++) {
+            BurstParticle p = new BurstParticle();
+            double angle = (Math.PI * 2.0 * i / count) + (random.nextFloat() - 0.5f) * 0.45f;
+            float speed = 90f + random.nextFloat() * 190f;
+            p.x = x;
+            p.y = y;
+            p.vx = (float) Math.cos(angle) * speed;
+            p.vy = (float) Math.sin(angle) * speed - 50f;
+            p.size = 6f + random.nextFloat() * 8f;
+            p.maxLife = 0.55f + random.nextFloat() * 0.45f;
+            p.life = p.maxLife;
+            p.color = palette[random.nextInt(palette.length)];
+            p.isStar = (i % 2 == 0);
+            burstParticles.add(p);
+        }
+    }
+
     // Bubbles
     private static class Bubble {
         float x, y, r, speed;
@@ -603,6 +630,7 @@ public class DiverGameView extends View {
                 state.coins += c.rewardCoins;
                 state.save();
                 SoundManager.get(getContext()).playChest();
+                spawnBurst(c.x, c.y - 20f, 0xFFFFD700, 18);
                 addFX(c.x, c.y - 45f, "🎁 打開 " + c.name + "！獲得 +" + c.rewardCoins + " 貝殼金幣！", 0xFFFFD700, 36f);
                 if (listener != null) listener.onCoinsUpdated(state.coins);
                 return;
@@ -618,6 +646,7 @@ public class DiverGameView extends View {
                 state.pearlCount++;
                 state.save();
                 SoundManager.get(getContext()).playPearl();
+                spawnBurst(pc.x, pc.y - 15f, 0xFFE040FB, 16);
                 addFX(pc.x, pc.y - 50f, "🦪 拾獲璀璨大珍珠！+" + pc.rewardCoins + " 貝殼金幣！", 0xFFE040FB, 34f);
                 if (listener != null) listener.onCoinsUpdated(state.coins);
                 return;
@@ -630,6 +659,7 @@ public class DiverGameView extends View {
                 // Rescue / collect the peaceful sleeping creature!
                 state.addCaughtFish(f.name, f.value + 35, f.weightKg);
                 SoundManager.get(getContext()).playUpgrade();
+                spawnBurst(f.x, f.y, 0xFFFF80AB, 16);
                 addFX(diverX, diverY - 60f, "🌟 溫柔活捉 " + f.name + "！", 0xFFFFD700, 34f);
                 addFX(diverX, diverY - 20f, "💖 獲得愛心活捉獎勵 +" + (f.value + 35) + " 金幣！", 0xFF00E676, 30f);
                 if (listener != null) listener.onCoinsUpdated(state.coins);
@@ -922,11 +952,22 @@ public class DiverGameView extends View {
                 b.y = worldHeight - 50f;
                 b.x = random.nextFloat() * worldWidth;
             }
-            if (b.isOxygenPickup && Math.hypot(diverX - b.x, diverY - b.y) < (b.r + 48f)) {
-                oxygen = Math.min(maxOxygen, oxygen + 25f);
-                SoundManager.get(getContext()).playBubble();
-                addFX(b.x, b.y, "🫧 +25 氧氣！", 0xFF00FFFF, 26f);
-                b.y = worldHeight - 50f;
+            if (b.isOxygenPickup) {
+                float oxDx = diverX - b.x;
+                float oxDy = diverY - b.y;
+                float oxDist = (float) Math.hypot(oxDx, oxDy);
+                // Gentle magnet pull for 4-year-old kids
+                if (oxDist > 1f && oxDist < 140f) {
+                    b.x += (oxDx / oxDist) * 190f * dt;
+                    b.y += (oxDy / oxDist) * 190f * dt;
+                }
+                if (oxDist < (b.r + 52f)) {
+                    oxygen = Math.min(maxOxygen, oxygen + 25f);
+                    SoundManager.get(getContext()).playBubble();
+                    spawnBurst(b.x, b.y, 0xFF00E5FF, 10);
+                    addFX(b.x, b.y, "🫧 +25 氧氣！", 0xFF00FFFF, 26f);
+                    b.y = worldHeight - 50f;
+                }
             }
         }
 
@@ -1070,6 +1111,7 @@ public class DiverGameView extends View {
                 if (hookedFish != null) {
                     state.addCaughtFish(hookedFish.name, hookedFish.value, hookedFish.weightKg);
                     SoundManager.get(getContext()).playCatch();
+                    spawnBurst(diverX, diverY, 0xFFFFD700, 14);
                     addFX(diverX, diverY - 65f, "⭐ 捕獲 " + hookedFish.name + " (" + hookedFish.weightKg + "kg)！", 0xFFFFD700, 34f);
                     addFX(diverX, diverY - 25f, "💰 自動兌換金幣 +" + hookedFish.value + " 貝殼金幣！", 0xFF00E676, 30f);
                     if (listener != null) listener.onCoinsUpdated(state.coins);
@@ -1104,6 +1146,21 @@ public class DiverGameView extends View {
             fx.y += fx.vy * dt;
             fx.alpha = Math.max(0f, 1f - age / 1.4f);
         }
+
+        // Celebratory Burst Particles
+        Iterator<BurstParticle> bpIt = burstParticles.iterator();
+        while (bpIt.hasNext()) {
+            BurstParticle p = bpIt.next();
+            p.life -= dt;
+            if (p.life <= 0f) {
+                bpIt.remove();
+                continue;
+            }
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vy += 180f * dt; // gentle underwater drift-down
+            p.vx *= 0.96f;
+        }
     }
 
     private void addFX(float x, float y, String text, int color, float size) {
@@ -1134,43 +1191,163 @@ public class DiverGameView extends View {
         ));
         canvas.drawRect(0, 0, w, h, bgPaint);
 
+        // Tropical Sky above ocean surface (visible near surface)
+        if (cameraY < 160f) {
+            Paint skyPaint = new Paint();
+            skyPaint.setShader(new LinearGradient(
+                0, -cameraY, 0, 145f - cameraY,
+                new int[]{ 0xFF64B5F6, 0xFFB3E5FC, 0xFFE0F7FA },
+                new float[]{ 0f, 0.6f, 1f },
+                Shader.TileMode.CLAMP
+            ));
+            canvas.drawRect(0, 0, w, Math.max(0f, 145f - cameraY), skyPaint);
+        }
+
         canvas.save();
         float shakeX = (screenShakeTimer > 0f) ? (random.nextFloat() - 0.5f) * 16f : 0f;
         float shakeY = (screenShakeTimer > 0f) ? (random.nextFloat() - 0.5f) * 16f : 0f;
         canvas.translate(-cameraX + shakeX, -cameraY + shakeY);
 
-        // Parallax Distant Cliff Silhouettes
-        envPaint.setColor(0x1A001F3F);
+        // Dave the Diver Blue Hole Layered Canyon Cliffs (Left & Right)
         envPaint.setStyle(Paint.Style.FILL);
-        Path distantCliff = new Path();
-        distantCliff.moveTo(0, 0);
-        distantCliff.lineTo(380f, 800f);
-        distantCliff.lineTo(250f, 1900f);
-        distantCliff.lineTo(480f, 3200f);
-        distantCliff.lineTo(320f, worldHeight);
-        distantCliff.lineTo(0, worldHeight);
-        distantCliff.close();
-        canvas.drawPath(distantCliff, envPaint);
+        envPaint.setColor(0x28001A33);
+        Path farLeftCliff = new Path();
+        farLeftCliff.moveTo(0, 140f);
+        farLeftCliff.lineTo(440f, 760f);
+        farLeftCliff.lineTo(290f, 1850f);
+        farLeftCliff.lineTo(520f, 3150f);
+        farLeftCliff.lineTo(360f, worldHeight);
+        farLeftCliff.lineTo(0, worldHeight);
+        farLeftCliff.close();
+        canvas.drawPath(farLeftCliff, envPaint);
 
-        // Shimmering Surface Sunlight God-Rays
+        Path farRightCliff = new Path();
+        farRightCliff.moveTo(worldWidth, 140f);
+        farRightCliff.lineTo(worldWidth - 420f, 820f);
+        farRightCliff.lineTo(worldWidth - 260f, 1950f);
+        farRightCliff.lineTo(worldWidth - 500f, 3100f);
+        farRightCliff.lineTo(worldWidth - 340f, worldHeight);
+        farRightCliff.lineTo(worldWidth, worldHeight);
+        farRightCliff.close();
+        canvas.drawPath(farRightCliff, envPaint);
+
+        // Foreground Rocky Trench Silhouettes
+        envPaint.setColor(0x45001022);
+        Path nearLeftCliff = new Path();
+        nearLeftCliff.moveTo(0, 140f);
+        nearLeftCliff.lineTo(170f, 920f);
+        nearLeftCliff.lineTo(110f, 2100f);
+        nearLeftCliff.lineTo(230f, 3400f);
+        nearLeftCliff.lineTo(140f, worldHeight);
+        nearLeftCliff.lineTo(0, worldHeight);
+        nearLeftCliff.close();
+        canvas.drawPath(nearLeftCliff, envPaint);
+
+        Path nearRightCliff = new Path();
+        nearRightCliff.moveTo(worldWidth, 140f);
+        nearRightCliff.lineTo(worldWidth - 160f, 960f);
+        nearRightCliff.lineTo(worldWidth - 105f, 2200f);
+        nearRightCliff.lineTo(worldWidth - 220f, 3500f);
+        nearRightCliff.lineTo(worldWidth - 135f, worldHeight);
+        nearRightCliff.lineTo(worldWidth, worldHeight);
+        nearRightCliff.close();
+        canvas.drawPath(nearRightCliff, envPaint);
+
+        // Abyssal Seafloor & Glowing Hydrothermal Vents
+        if (cameraY + h > worldHeight - 250f) {
+            envPaint.setColor(0xFF040D1A);
+            Path seabed = new Path();
+            seabed.moveTo(0, worldHeight - 85f);
+            for (float sx = 0; sx <= worldWidth; sx += 260f) {
+                float mound = (float) Math.sin(sx * 0.005f) * 28f;
+                seabed.lineTo(sx, worldHeight - 85f + mound);
+            }
+            seabed.lineTo(worldWidth, worldHeight);
+            seabed.lineTo(0, worldHeight);
+            seabed.close();
+            canvas.drawPath(seabed, envPaint);
+
+            float ventPulse = 0.65f + 0.35f * (float) Math.sin(now / 350.0);
+            for (float vx = 420f; vx < worldWidth - 300f; vx += 680f) {
+                lightPaint.setStyle(Paint.Style.FILL);
+                lightPaint.setColor(Color.argb((int) (95 * ventPulse), 0, 229, 255));
+                canvas.drawCircle(vx, worldHeight - 95f, 45f * ventPulse, lightPaint);
+                envPaint.setColor(0xFF102030);
+                canvas.drawRect(vx - 18f, worldHeight - 105f, vx + 18f, worldHeight - 75f, envPaint);
+            }
+        }
+
+        // Volumetric Gradient Sunlight God-Rays
         float sway = (float) Math.sin(now / 1100.0) * 55f;
-        envPaint.setColor(0x15FFFFFF);
-        for (float rx = 220f; rx < worldWidth; rx += 520f) {
+        envPaint.setShader(new LinearGradient(
+            0, 140f, 0, 980f,
+            new int[]{ 0x26FFFFFF, 0x0FFFFFFF, 0x00FFFFFF },
+            new float[]{ 0f, 0.55f, 1f },
+            Shader.TileMode.CLAMP
+        ));
+        for (float rx = 180f; rx < worldWidth; rx += 460f) {
             Path ray = new Path();
-            ray.moveTo(rx + sway * 0.4f, 0);
-            ray.lineTo(rx + 160f + sway, 750f);
-            ray.lineTo(rx + 90f + sway, 750f);
-            ray.lineTo(rx - 80f + sway * 0.4f, 0);
+            ray.moveTo(rx + sway * 0.4f, 140f);
+            ray.lineTo(rx + 200f + sway, 980f);
+            ray.lineTo(rx + 85f + sway, 980f);
+            ray.lineTo(rx - 75f + sway * 0.4f, 140f);
             ray.close();
             canvas.drawPath(ray, envPaint);
         }
+        envPaint.setShader(null);
 
-        // Surface Cobra Boat
-        diverPaint.setColor(0xFFFF8C00);
-        canvas.drawRoundRect(600f, 75f, 1200f, 140f, 16f, 16f, diverPaint);
+        // Shallow Water Caustic Shimmer
+        if (cameraY < 900f) {
+            envPaint.setStyle(Paint.Style.STROKE);
+            envPaint.setStrokeWidth(3f);
+            envPaint.setColor(0x16B2EBF2);
+            for (int c = 0; c < 6; c++) {
+                float cx = 220f + c * 420f + (float) Math.sin(now / 700.0 + c) * 35f;
+                float cy = 260f + (c % 2) * 140f + (float) Math.cos(now / 900.0 + c) * 20f;
+                canvas.drawOval(cx - 85f, cy - 16f, cx + 85f, cy + 16f, envPaint);
+            }
+            envPaint.setStyle(Paint.Style.FILL);
+        }
+
+        // Animated Ocean Surface Waves & Foam Line
+        if (cameraY < 260f) {
+            Path wavePath = new Path();
+            wavePath.moveTo(0, 140f);
+            for (float wx = 0; wx <= worldWidth; wx += 40f) {
+                float wy = 140f + (float) Math.sin(wx * 0.025 + now / 320.0) * 7f;
+                wavePath.lineTo(wx, wy);
+            }
+            envPaint.setStyle(Paint.Style.STROKE);
+            envPaint.setStrokeWidth(7f);
+            envPaint.setColor(0xCCE0F7FA);
+            canvas.drawPath(wavePath, envPaint);
+            envPaint.setStyle(Paint.Style.FILL);
+        }
+
+        // Detailed Cobra Rescue Boat (gently bobbing on surface waves)
+        float boatBob = (float) Math.sin(now / 360.0) * 5f;
+        // Boat Cabin
+        diverPaint.setStyle(Paint.Style.FILL);
         diverPaint.setColor(0xFFFFFFFF);
-        diverPaint.setTextSize(26f);
-        canvas.drawText("⛵ 柯布拉救援基地 (游回水面或按 [返回鍵] 升級裝備)", 630f, 118f, diverPaint);
+        canvas.drawRoundRect(740f, 34f + boatBob, 1020f, 88f + boatBob, 14f, 14f, diverPaint);
+        diverPaint.setColor(0xFF29B6F6);
+        canvas.drawRoundRect(765f, 46f + boatBob, 860f, 76f + boatBob, 8f, 8f, diverPaint);
+        canvas.drawRoundRect(880f, 46f + boatBob, 995f, 76f + boatBob, 8f, 8f, diverPaint);
+        // Boat Hull
+        diverPaint.setColor(0xFFFF8C00);
+        canvas.drawRoundRect(600f, 76f + boatBob, 1200f, 142f + boatBob, 22f, 22f, diverPaint);
+        diverPaint.setColor(0xFFE65100);
+        canvas.drawRoundRect(615f, 120f + boatBob, 1185f, 142f + boatBob, 10f, 10f, diverPaint);
+        // Life Ring
+        diverPaint.setStyle(Paint.Style.STROKE);
+        diverPaint.setStrokeWidth(6f);
+        diverPaint.setColor(0xFFFF5252);
+        canvas.drawCircle(665f, 104f + boatBob, 14f, diverPaint);
+        diverPaint.setStyle(Paint.Style.FILL);
+        diverPaint.setColor(0xFFFFFFFF);
+        diverPaint.setTextSize(24f);
+        diverPaint.setFakeBoldText(true);
+        canvas.drawText("⛵ 柯布拉救援基地 (游回水面升級)", 705f, 112f + boatBob, diverPaint);
 
         // Sequence 1: Deep Abyssal Bioluminescent Crystals (Y > 3400)
         for (GlowingCrystal gc : caveCrystals) {
@@ -1274,6 +1451,39 @@ public class DiverGameView extends View {
         // Humanoid Scuba Dave Diver
         renderDaveDiver(canvas, now);
 
+        // Visual Weapon-Switch Hold Ring around Dave (helps 4-year-old see long-press progress)
+        if (isActionKeyDown && !actionLongPressTriggered) {
+            long heldMs = now - actionKeyDownTime;
+            if (heldMs > 120) {
+                float progress = Math.min(1f, (heldMs - 120f) / 260f);
+                diverPaint.setStyle(Paint.Style.STROKE);
+                diverPaint.setStrokeWidth(7f);
+                diverPaint.setColor(currentWeapon == WeaponMode.HARPOON ? 0xFF00E5FF : 0xFFFFD700);
+                canvas.drawArc(diverX - 58f, diverY - 58f, diverX + 58f, diverY + 58f, -90f, 360f * progress, false, diverPaint);
+                diverPaint.setStyle(Paint.Style.FILL);
+            }
+        }
+
+        // Bouncing [OK] Interaction Prompt for 4-year-old kids
+        renderNearbyActionPrompt(canvas, now);
+
+        // Celebratory Burst Particles
+        for (BurstParticle p : burstParticles) {
+            float alpha = Math.max(0f, p.life / p.maxLife);
+            diverPaint.setStyle(Paint.Style.FILL);
+            diverPaint.setColor(p.color);
+            diverPaint.setAlpha((int) (alpha * 255));
+            if (p.isStar) {
+                canvas.drawCircle(p.x, p.y, p.size * alpha, diverPaint);
+                diverPaint.setColor(0xFFFFFFFF);
+                diverPaint.setAlpha((int) (alpha * 200));
+                canvas.drawCircle(p.x, p.y, p.size * 0.45f * alpha, diverPaint);
+            } else {
+                canvas.drawCircle(p.x, p.y, p.size * alpha, diverPaint);
+            }
+            diverPaint.setAlpha(255);
+        }
+
         // Floating FX
         for (GameFX fx : effects) {
             textPaint.setColor(fx.color);
@@ -1282,11 +1492,93 @@ public class DiverGameView extends View {
             textPaint.setFakeBoldText(true);
             canvas.drawText(fx.text, fx.x, fx.y, textPaint);
         }
+        textPaint.setAlpha(255);
 
         canvas.restore();
 
         // Modern Dave the Diver TV HUD
         renderTVHUD(canvas, w, h);
+    }
+
+    private void renderNearbyActionPrompt(Canvas canvas, long now) {
+        if (mountedCreature != null || bobo.isRescuing) return;
+
+        float targetX = 0f, targetY = 0f;
+        String prompt = null;
+        int pillColor = 0xEE00BFA5;
+
+        if (bobo.active && (oxygen / maxOxygen < 0.25f)) {
+            targetX = bobo.x;
+            targetY = bobo.y - 65f;
+            prompt = "🐬 按 OK 救救我!";
+            pillColor = 0xEEFF4081;
+        } else {
+            for (TreasureChest c : treasureChests) {
+                if (!c.opened && Math.hypot(diverX - c.x, diverY - c.y) < 140f) {
+                    targetX = c.x;
+                    targetY = c.y - 75f;
+                    prompt = "🎁 按 OK 開寶箱!";
+                    pillColor = 0xEEFF9800;
+                    break;
+                }
+            }
+            if (prompt == null) {
+                for (PearlClam pc : pearlClams) {
+                    if (pc.hasPearl && Math.sin(pc.openCycle) > 0.35f && Math.hypot(diverX - pc.x, diverY - pc.y) < 120f) {
+                        targetX = pc.x;
+                        targetY = pc.y - 70f;
+                        prompt = "🦪 按 OK 拿珍珠!";
+                        pillColor = 0xEEAB47BC;
+                        break;
+                    }
+                }
+            }
+            if (prompt == null) {
+                for (RealisticFish f : fishes) {
+                    if (f.isSleeping && Math.hypot(diverX - f.x, diverY - f.y) < 120f) {
+                        targetX = f.x;
+                        targetY = f.y - 65f;
+                        prompt = "💖 按 OK 抱抱抓!";
+                        pillColor = 0xEEEC407A;
+                        break;
+                    }
+                    if (f.species == RealisticFish.Species.TURTLE && Math.hypot(diverX - f.x, diverY - f.y) < 130f) {
+                        targetX = f.x;
+                        targetY = f.y - 65f;
+                        prompt = "🐢 按 OK 騎海龜!";
+                        pillColor = 0xEE43A047;
+                        break;
+                    }
+                    if (f.species == RealisticFish.Species.BLUE_WHALE && Math.hypot(diverX - f.x, diverY - f.y) < 180f) {
+                        targetX = f.x;
+                        targetY = f.y - 95f;
+                        prompt = "🐋 按 OK 騎藍鯨!";
+                        pillColor = 0xEE039BE5;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (prompt != null) {
+            float bounce = (float) Math.sin(now / 140.0) * 7f;
+            float py = targetY + bounce;
+            hudPaint.setStyle(Paint.Style.FILL);
+            hudPaint.setColor(pillColor);
+            canvas.drawRoundRect(targetX - 115f, py - 34f, targetX + 115f, py + 14f, 24f, 24f, hudPaint);
+            hudPaint.setStyle(Paint.Style.STROKE);
+            hudPaint.setStrokeWidth(3f);
+            hudPaint.setColor(Color.WHITE);
+            canvas.drawRoundRect(targetX - 115f, py - 34f, targetX + 115f, py + 14f, 24f, 24f, hudPaint);
+            hudPaint.setStyle(Paint.Style.FILL);
+
+            textPaint.setColor(Color.WHITE);
+            textPaint.setTextSize(23f);
+            textPaint.setFakeBoldText(true);
+            textPaint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText(prompt, targetX, py - 3f, textPaint);
+            textPaint.setTextAlign(Paint.Align.LEFT);
+        }
     }
 
     // Sequence 1: Render Glowing Abyssal Crystals
@@ -2142,18 +2434,24 @@ public class DiverGameView extends View {
             canvas.drawText("🤿 O₂ 氧氣存量: " + (int)(oxPercent * 100) + "%", 55f, 54f, textPaint);
         }
 
-        // Top Center: Current Weapon Switch Badge (Harpoon, Bubble Gun)
-        hudPaint.setColor(0xDD002244);
-        canvas.drawRoundRect(w / 2f - 230f, 25f, w / 2f + 230f, 90f, 16f, 16f, hudPaint);
+        // Top Center: 4-Year-Old Friendly Dual-Icon Weapon Switcher
+        hudPaint.setColor(0xDD001D3D);
+        canvas.drawRoundRect(w / 2f - 190f, 22f, w / 2f + 190f, 96f, 22f, 22f, hudPaint);
+
+        boolean isHarpoon = (currentWeapon == WeaponMode.HARPOON);
+        // Harpoon Pill
+        hudPaint.setColor(isHarpoon ? 0xFFFFB300 : 0x33FFFFFF);
+        canvas.drawRoundRect(w / 2f - 178f, 30f, w / 2f - 6f, 88f, 16f, 16f, hudPaint);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setTextSize(20f);
-        if (currentWeapon == WeaponMode.HARPOON) {
-            textPaint.setColor(0xFFFFD700);
-            canvas.drawText("🎯 武器：魚叉槍 [長按 OK / 播放鍵 切換]", w / 2f, 65f, textPaint);
-        } else {
-            textPaint.setColor(0xFF00E5FF);
-            canvas.drawText("🫧 武器：氣泡槍 [長按 OK / 播放鍵 切換]", w / 2f, 65f, textPaint);
-        }
+        textPaint.setTextSize(23f);
+        textPaint.setColor(isHarpoon ? 0xFF001428 : 0xAAFFFFFF);
+        canvas.drawText("🎯 魚叉", w / 2f - 92f, 67f, textPaint);
+
+        // Bubble Gun Pill
+        hudPaint.setColor(!isHarpoon ? 0xFF00B8D4 : 0x33FFFFFF);
+        canvas.drawRoundRect(w / 2f + 6f, 30f, w / 2f + 178f, 88f, 16f, 16f, hudPaint);
+        textPaint.setColor(!isHarpoon ? Color.WHITE : 0xAAFFFFFF);
+        canvas.drawText("🫧 泡泡", w / 2f + 92f, 67f, textPaint);
         textPaint.setTextAlign(Paint.Align.LEFT);
 
         // Top Right: Water Depth & Realtime Coins
@@ -2174,14 +2472,14 @@ public class DiverGameView extends View {
         textPaint.setColor(0xFFFFD700);
         canvas.drawText("💰 金幣: " + state.coins + " 貝殼金幣", w - 420f, 92f, textPaint);
 
-        // Bottom Remote Guide
-        hudPaint.setColor(0xE6000F1F);
-        canvas.drawRoundRect(w * 0.08f, h - 72f, w * 0.92f, h - 14f, 16f, 16f, hudPaint);
+        // Bottom Remote Guide (Icon-First for 4-year-old kids)
+        hudPaint.setColor(0xD8001226);
+        canvas.drawRoundRect(w * 0.12f, h - 70f, w * 0.88f, h - 14f, 24f, 24f, hudPaint);
 
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(20f);
+        textPaint.setTextSize(22f);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("🎮 遙控器指南：[方向鍵] 游動潛水 | [OK 鍵] 抓魚/開箱/騎乘 | [長按 OK 或 播放鍵] 切換武器 | [返回鍵] 回甲板選單", w / 2f, h - 36f, textPaint);
+        canvas.drawText("🕹️ 方向鍵游動   •   ⭕ 按 OK 抓魚/互動   •   ⏯️ 長按換泡泡   •   ↩️ 返回商店", w / 2f, h - 34f, textPaint);
         textPaint.setTextAlign(Paint.Align.LEFT);
     }
 }

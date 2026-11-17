@@ -42,7 +42,8 @@ public class DiverGameView extends View {
     private final Paint envPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint abyssOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Bitmap kidHeadBitmap;
-    private final RectF kidHeadRect = new RectF(-4f, -36f, 48f, 16f);
+    private final RectF kidHeadRect = new RectF(-12f, -44f, 56f, 24f);
+    private final RectF hudAvatarRect = new RectF(40f, 33f, 108f, 101f);
 
     // Player Dave Diver State
     private float diverX = 850f;
@@ -2473,26 +2474,29 @@ public class DiverGameView extends View {
 
         if (kidHeadBitmap != null) {
             // Soft helmet back glow
+            diverPaint.setStyle(Paint.Style.FILL);
             diverPaint.setColor(0x3300E5FF);
-            canvas.drawCircle(22f, -10f, 30f, diverPaint);
+            canvas.drawCircle(22f, -10f, 36f, diverPaint);
 
-            // Real kid portrait (no background)
+            // Real kid portrait (100% opaque!)
+            diverPaint.setColor(Color.WHITE);
+            diverPaint.setAlpha(255);
             canvas.drawBitmap(kidHeadBitmap, null, kidHeadRect, diverPaint);
 
             // Crystal-clear scuba helmet glass dome & highlight
             diverPaint.setStyle(Paint.Style.STROKE);
             diverPaint.setStrokeWidth(3.5f);
-            diverPaint.setColor(0xCC80DEEA);
-            canvas.drawCircle(22f, -10f, 30f, diverPaint);
+            diverPaint.setColor(0xDD80DEEA);
+            canvas.drawCircle(22f, -10f, 36f, diverPaint);
             diverPaint.setStyle(Paint.Style.FILL);
-            diverPaint.setColor(0x55FFFFFF);
-            canvas.drawCircle(11f, -25f, 5f, diverPaint);
+            diverPaint.setColor(0x66FFFFFF);
+            canvas.drawCircle(9f, -29f, 5.5f, diverPaint);
 
             // Mini headlamp on top of helmet
             diverPaint.setColor(0xFFFFD166);
-            canvas.drawRoundRect(18f, -44f, 32f, -36f, 4f, 4f, diverPaint);
+            canvas.drawRoundRect(18f, -50f, 32f, -42f, 4f, 4f, diverPaint);
             diverPaint.setColor(0xFFFFF59D);
-            canvas.drawCircle(32f, -40f, 4f, diverPaint);
+            canvas.drawCircle(32f, -46f, 4.5f, diverPaint);
         } else {
             diverPaint.setColor(0xFF003865);
             canvas.drawCircle(18f, -2f, 18f, diverPaint);
@@ -2594,28 +2598,49 @@ public class DiverGameView extends View {
             textPaint.setTextAlign(Paint.Align.LEFT);
         }
 
-        // Top Left: Big O2 Gauge
+        // Top Left: Big O2 Gauge with Kid Portrait & Circular O2 Ring
         hudPaint.setStyle(Paint.Style.FILL);
         hudPaint.setColor(0xDD001428);
-        canvas.drawRoundRect(40f, 25f, 410f, 105f, 18f, 18f, hudPaint);
+        canvas.drawRoundRect(26f, 20f, 445f, 114f, 22f, 22f, hudPaint);
 
         int oxColor = oxPercent > 0.5f ? 0xFF00E676 : (oxPercent > 0.25f ? 0xFFFFD166 : 0xFFFF1744);
+
+        // Circular Kid Avatar + O2 Ring
+        float avCx = 74f, avCy = 67f, avR = 39f;
+        hudPaint.setColor(0xFF00284D);
+        canvas.drawCircle(avCx, avCy, avR, hudPaint);
+        if (kidHeadBitmap != null) {
+            hudPaint.setColor(Color.WHITE);
+            hudPaint.setAlpha(255);
+            canvas.drawBitmap(kidHeadBitmap, null, hudAvatarRect, hudPaint);
+        }
+        // Background track ring
+        hudPaint.setStyle(Paint.Style.STROKE);
+        hudPaint.setStrokeWidth(6f);
         hudPaint.setColor(0x40FFFFFF);
-        canvas.drawRoundRect(55f, 62f, 395f, 89f, 8f, 8f, hudPaint);
+        canvas.drawCircle(avCx, avCy, avR, hudPaint);
+        // Active O2 sweep ring
         hudPaint.setColor(oxColor);
-        canvas.drawRoundRect(55f, 62f, 55f + 340f * oxPercent, 89f, 8f, 8f, hudPaint);
+        canvas.drawArc(avCx - avR, avCy - avR, avCx + avR, avCy + avR, -90f, 360f * oxPercent, false, hudPaint);
+        hudPaint.setStyle(Paint.Style.FILL);
+
+        // Horizontal O2 Bar beside avatar
+        hudPaint.setColor(0x40FFFFFF);
+        canvas.drawRoundRect(128f, 66f, 425f, 94f, 10f, 10f, hudPaint);
+        hudPaint.setColor(oxColor);
+        canvas.drawRoundRect(128f, 66f, 128f + 297f * oxPercent, 94f, 10f, 10f, hudPaint);
 
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(21f);
         textPaint.setFakeBoldText(true);
         if (mountedCreature != null) {
             textPaint.setColor(0xFF00E676);
-            canvas.drawText("🏇 騎乘漫遊中 (氧氣保護中 💖)", 55f, 54f, textPaint);
+            canvas.drawText("🏇 騎乘漫遊中 💖", 128f, 56f, textPaint);
         } else if (oxPercent < 0.25f) {
             textPaint.setColor(0xFFFF5252);
-            canvas.drawText("⚠️ 氧氣低: " + (int)(oxPercent * 100) + "% (可呼叫海豚!)", 55f, 54f, textPaint);
+            canvas.drawText("⚠️ 氧氣低: " + (int)(oxPercent * 100) + "%", 128f, 56f, textPaint);
         } else {
-            canvas.drawText("🤿 O₂ 氧氣存量: " + (int)(oxPercent * 100) + "%", 55f, 54f, textPaint);
+            canvas.drawText("🤿 O₂ 氧氣: " + (int)(oxPercent * 100) + "%", 128f, 56f, textPaint);
         }
 
         // Top Center: 4-Year-Old Friendly Dual-Icon Weapon Switcher

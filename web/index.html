@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#001529" />
+  <title>🦈 小戴夫水下大冒險 - Kid Dive Game</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <!-- Top Navigation Bar (hidden during active Dive mode for full screen, shown in Shop/Theater/Aquarium) -->
+  <nav id="top-nav-bar" class="hidden">
+    <div class="nav-buttons">
+      <button class="nav-btn active" data-mode="GAME">🤿 潛水冒險</button>
+      <button class="nav-btn" data-mode="SHOP">🛒 裝備商店</button>
+      <button class="nav-btn" data-mode="THEATER">🎵 海洋音樂廳</button>
+      <button class="nav-btn" data-mode="AQUARIUM">🐠 快樂水族箱</button>
+      <button id="btn-mute" class="nav-btn">🔊 音效</button>
+      <button id="btn-reset" class="nav-btn danger">🔒 重設</button>
+    </div>
+    <div id="nav-coins" class="coins-pill">🐚 250</div>
+  </nav>
+
+  <!-- Main Content Stage -->
+  <main id="stage">
+    <canvas id="dive-canvas"></canvas>
+    <div id="shop-view" class="panel-view hidden"></div>
+    <div id="theater-view" class="panel-view hidden"></div>
+    <canvas id="aquarium-canvas" class="hidden"></canvas>
+  </main>
+
+  <!-- Parental Math Gate Modal -->
+  <div id="reset-modal" class="modal hidden">
+    <div class="modal-card">
+      <h2 id="reset-title">🔒 家長確認</h2>
+      <div id="reset-options" class="math-options"></div>
+      <button id="reset-cancel" class="cancel-btn">✅ 繼續冒險 / 取消</button>
+    </div>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

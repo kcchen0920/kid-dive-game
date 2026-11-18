@@ -6,6 +6,13 @@ import { AquariumGame } from './aquarium.js';
 const state = new GameState();
 const sound = new SoundManager();
 
+// Unlock background music reliably on browser-accepted user gestures (click / touchend / pointerup / keydown)
+const tryUnlockAudio = () => sound.unlock();
+window.addEventListener('pointerup', tryUnlockAudio, { passive: true });
+window.addEventListener('touchend', tryUnlockAudio, { passive: true });
+window.addEventListener('click', tryUnlockAudio, { passive: true });
+window.addEventListener('keydown', tryUnlockAudio, { passive: true });
+
 const topNavBar = document.getElementById('top-nav-bar');
 const navCoins = document.getElementById('nav-coins');
 const navButtons = document.querySelectorAll('.nav-btn[data-mode]');

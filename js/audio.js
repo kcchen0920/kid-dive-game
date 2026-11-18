@@ -4,17 +4,34 @@ export class SoundManager {
     this.bgm = new Audio('./assets/audio/bgm_ocean.wav');
     this.bgm.preload = 'auto';
     this.bgm.loop = true;
-    this.bgm.volume = 0.42;
+    this.bgm.volume = 0.65;
 
     this.songPlayer = null;
     this.currentSongUrl = null;
     this.unlocked = false;
+    this.audioCtx = null;
+    this.onStateChange = null;
   }
 
-  unlock() {
+  isBgmPlaying() {
+    return !this.muted && !this.bgm.paused;
+  }
+
+  unlock(forcePlay = false) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        if (!this.audioCtx) this.audioCtx = new AC();
+        if (this.audioCtx.state === 'suspended') {
+          this.audioCtx.resume().catch(() => {});
+        }
+      }
+    } catch {}
+
     if (this.muted || this.songPlayer) return;
-    if (!this.bgm.paused) {
+    if (!this.bgm.paused && !forcePlay) {
       this.unlocked = true;
+      this.onStateChange?.();
       return;
     }
     try {
@@ -22,9 +39,13 @@ export class SoundManager {
       if (p && typeof p.then === 'function') {
         p.then(() => {
           this.unlocked = true;
-        }).catch(() => {});
+          this.onStateChange?.();
+        }).catch(() => {
+          this.onStateChange?.();
+        });
       } else {
         this.unlocked = true;
+        this.onStateChange?.();
       }
     } catch {}
   }

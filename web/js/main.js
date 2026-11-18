@@ -20,9 +20,36 @@ const btnMute = document.getElementById('btn-mute');
 const btnReset = document.getElementById('btn-reset');
 
 const diveCanvas = document.getElementById('dive-canvas');
+const diveAudioBtn = document.getElementById('dive-audio-btn');
 const shopView = document.getElementById('shop-view');
 const theaterView = document.getElementById('theater-view');
 const aquariumCanvas = document.getElementById('aquarium-canvas');
+
+function updateAudioButtons() {
+  btnMute.textContent = sound.muted ? '🔇 靜音' : '🔊 音效';
+  if (sound.muted) {
+    diveAudioBtn.textContent = '🔇 靜音';
+    diveAudioBtn.classList.remove('waiting');
+  } else if (sound.isBgmPlaying()) {
+    diveAudioBtn.textContent = '🔊';
+    diveAudioBtn.classList.remove('waiting');
+  } else {
+    diveAudioBtn.textContent = '🔊 點此開音樂';
+    diveAudioBtn.classList.add('waiting');
+  }
+}
+
+sound.onStateChange = updateAudioButtons;
+diveAudioBtn.onclick = () => {
+  if (sound.muted) {
+    sound.toggleMute();
+  } else if (!sound.isBgmPlaying()) {
+    sound.unlock(true);
+  } else {
+    sound.toggleMute();
+  }
+  updateAudioButtons();
+};
 
 const resetModal = document.getElementById('reset-modal');
 const resetTitle = document.getElementById('reset-title');
@@ -251,10 +278,12 @@ function switchMode(mode) {
   if (mode === 'GAME') {
     topNavBar.classList.add('hidden');
     diveCanvas.classList.remove('hidden');
+    diveAudioBtn.classList.remove('hidden');
     diveGame.initGame();
     diveGame.start();
   } else {
     topNavBar.classList.remove('hidden');
+    diveAudioBtn.classList.add('hidden');
     if (mode === 'SHOP') {
       shopView.classList.remove('hidden');
       renderShop();
@@ -276,8 +305,8 @@ navButtons.forEach((btn) => {
 });
 
 btnMute.onclick = () => {
-  const muted = sound.toggleMute();
-  btnMute.textContent = muted ? '🔇 靜音' : '🔊 音效';
+  sound.toggleMute();
+  updateAudioButtons();
 };
 
 // Parental Math Gate
@@ -312,4 +341,5 @@ btnReset.onclick = () => {
 resetCancel.onclick = () => resetModal.classList.add('hidden');
 
 updateCoinsUI();
+updateAudioButtons();
 switchMode('GAME');

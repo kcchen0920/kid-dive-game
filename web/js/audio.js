@@ -2,8 +2,9 @@ export class SoundManager {
   constructor() {
     this.muted = false;
     this.bgm = new Audio('./assets/audio/bgm_ocean.wav');
+    this.bgm.preload = 'auto';
     this.bgm.loop = true;
-    this.bgm.volume = 0.38;
+    this.bgm.volume = 0.42;
 
     this.songPlayer = null;
     this.currentSongUrl = null;
@@ -11,15 +12,25 @@ export class SoundManager {
   }
 
   unlock() {
-    if (this.unlocked) return;
-    this.unlocked = true;
-    if (!this.muted && !this.songPlayer) {
-      this.bgm.play().catch(() => {});
+    if (this.muted || this.songPlayer) return;
+    if (!this.bgm.paused) {
+      this.unlocked = true;
+      return;
     }
+    try {
+      const p = this.bgm.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          this.unlocked = true;
+        }).catch(() => {});
+      } else {
+        this.unlocked = true;
+      }
+    } catch {}
   }
 
   startBgm() {
-    if (this.muted || this.songPlayer) return;
+    if (this.muted || this.songPlayer || !this.bgm.paused) return;
     this.bgm.play().catch(() => {});
   }
 

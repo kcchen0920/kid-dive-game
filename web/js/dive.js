@@ -6,8 +6,8 @@ export class DiveGame {
     this.sound = sound;
     this.callbacks = callbacks;
 
-    this.worldWidth = 2600;
-    this.worldHeight = 4600;
+    this.worldWidth = 4200;
+    this.worldHeight = 6800;
     this.cameraX = 0;
     this.cameraY = 0;
 
@@ -168,6 +168,33 @@ export class DiveGame {
       }
     }
 
+    // Underwater Cliff Ledges, Swaying Kelp & Glowing Minerals
+    this.cliffLedges = [];
+    for (let cy = 420; cy < this.worldHeight - 300; cy += 480) {
+      const leftSide = (Math.floor(cy / 480) % 2 === 0);
+      this.cliffLedges.push({
+        x: leftSide ? 0 : this.worldWidth - 360,
+        y: cy,
+        w: 280 + Math.random() * 140,
+        h: 90 + Math.random() * 50,
+        left: leftSide,
+      });
+    }
+    this.kelpList = Array.from({ length: 36 }, (_, i) => ({
+      x: 160 + (i / 36) * (this.worldWidth - 320) + (Math.random() - 0.5) * 90,
+      baseY: i % 3 === 0 ? this.worldHeight - 85 : 500 + Math.random() * (this.worldHeight - 900),
+      height: 150 + Math.random() * 160,
+      leafCount: 5 + Math.floor(Math.random() * 4),
+      phase: Math.random() * Math.PI * 2,
+      color: i % 2 === 0 ? '#2E7D32' : '#00695C',
+    }));
+    this.mineralNodes = Array.from({ length: 18 }, (_, i) => ({
+      x: (i % 2 === 0 ? 90 + Math.random() * 240 : this.worldWidth - 90 - Math.random() * 240),
+      y: 700 + i * 320,
+      color: i % 3 === 0 ? '#00E5FF' : (i % 3 === 1 ? '#E040FB' : '#FFD54F'),
+      size: 18 + Math.random() * 14,
+    }));
+
     this.resize();
     this.cameraX = Math.max(0, this.diverX - this.viewW / 2);
     this.cameraY = 0;
@@ -215,6 +242,33 @@ export class DiveGame {
   start() {
     this.running = true;
     this.lastFrameTime = performance.now();
+    // Underwater Cliff Ledges, Swaying Kelp & Glowing Minerals
+    this.cliffLedges = [];
+    for (let cy = 420; cy < this.worldHeight - 300; cy += 480) {
+      const leftSide = (Math.floor(cy / 480) % 2 === 0);
+      this.cliffLedges.push({
+        x: leftSide ? 0 : this.worldWidth - 360,
+        y: cy,
+        w: 280 + Math.random() * 140,
+        h: 90 + Math.random() * 50,
+        left: leftSide,
+      });
+    }
+    this.kelpList = Array.from({ length: 36 }, (_, i) => ({
+      x: 160 + (i / 36) * (this.worldWidth - 320) + (Math.random() - 0.5) * 90,
+      baseY: i % 3 === 0 ? this.worldHeight - 85 : 500 + Math.random() * (this.worldHeight - 900),
+      height: 150 + Math.random() * 160,
+      leafCount: 5 + Math.floor(Math.random() * 4),
+      phase: Math.random() * Math.PI * 2,
+      color: i % 2 === 0 ? '#2E7D32' : '#00695C',
+    }));
+    this.mineralNodes = Array.from({ length: 18 }, (_, i) => ({
+      x: (i % 2 === 0 ? 90 + Math.random() * 240 : this.worldWidth - 90 - Math.random() * 240),
+      y: 700 + i * 320,
+      color: i % 3 === 0 ? '#00E5FF' : (i % 3 === 1 ? '#E040FB' : '#FFD54F'),
+      size: 18 + Math.random() * 14,
+    }));
+
     this.resize();
     const loop = (now) => {
       if (!this.running) return;
@@ -889,6 +943,53 @@ export class DiveGame {
       ctx.fill();
     }
 
+    // Underwater Cliff Ledges, Swaying Kelp & Glowing Minerals
+    for (const cl of this.cliffLedges) {
+      if (cl.y < this.cameraY - 200 || cl.y > this.cameraY + h + 200) continue;
+      ctx.fillStyle = '#0D2137';
+      ctx.beginPath();
+      if (cl.left) {
+        ctx.moveTo(0, cl.y);
+        ctx.quadraticCurveTo(cl.w, cl.y + 10, cl.w * 0.85, cl.y + cl.h);
+        ctx.lineTo(0, cl.y + cl.h + 20);
+      } else {
+        ctx.moveTo(this.worldWidth, cl.y);
+        ctx.quadraticCurveTo(this.worldWidth - cl.w, cl.y + 10, this.worldWidth - cl.w * 0.85, cl.y + cl.h);
+        ctx.lineTo(this.worldWidth, cl.y + cl.h + 20);
+      }
+      ctx.closePath(); ctx.fill();
+    }
+
+    for (const kp of this.kelpList) {
+      if (kp.baseY < this.cameraY - 50 || kp.baseY - kp.height > this.cameraY + h + 50) continue;
+      const wave = Math.sin(now / 850 + kp.phase) * 28;
+      ctx.strokeStyle = kp.color; ctx.lineWidth = 8; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(kp.x, kp.baseY);
+      ctx.quadraticCurveTo(kp.x + wave * 0.4, kp.baseY - kp.height * 0.5, kp.x + wave, kp.baseY - kp.height);
+      ctx.stroke();
+      ctx.fillStyle = kp.color;
+      for (let l = 1; l <= kp.leafCount; l++) {
+        const fy = kp.baseY - (l / (kp.leafCount + 1)) * kp.height;
+        const fx = kp.x + wave * (l / kp.leafCount);
+        const side = l % 2 === 0 ? -1 : 1;
+        ctx.beginPath();
+        ctx.ellipse(fx + side * 16, fy, 16, 6, side * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    for (const mn of this.mineralNodes) {
+      if (mn.y < this.cameraY - 80 || mn.y > this.cameraY + h + 80) continue;
+      ctx.fillStyle = mn.color;
+      ctx.beginPath();
+      ctx.moveTo(mn.x, mn.y - mn.size);
+      ctx.lineTo(mn.x + mn.size * 0.65, mn.y);
+      ctx.lineTo(mn.x, mn.y + mn.size * 0.5);
+      ctx.lineTo(mn.x - mn.size * 0.65, mn.y);
+      ctx.closePath(); ctx.fill();
+    }
+
     // Abyssal Seabed & Hydrothermal Vents
     if (this.cameraY + h > this.worldHeight - 220) {
       ctx.fillStyle = '#040D1A';
@@ -1420,7 +1521,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.5', w - 14, h - 12);
+    ctx.fillText('v1.6', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

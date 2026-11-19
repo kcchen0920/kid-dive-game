@@ -1221,16 +1221,23 @@ export class DiveGame {
       }
 
       if (f.species === 'PLESIOSAURUS' || f.species === 'ELASMOSAURUS' || f.species === 'NOTHOSAURUS') {
-        // Long graceful S-curved prehistoric neck + banded spots + diamond paddles
+        // Long graceful S-curved prehistoric neck + head + paddles
         const neckLen = f.species === 'ELASMOSAURUS' ? hl * 0.95 : hl * 0.62;
+        const headX = hl * 0.65 + neckLen;
+        const headY = -hh * 0.55;
         ctx.strokeStyle = f.primaryColor; ctx.lineWidth = hh * 0.42; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(hl * 0.5, -hh * 0.1); ctx.quadraticCurveTo(hl * 0.8, -hh * 0.7, hl * 0.6 + neckLen, -hh * 0.55); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(hl * 0.5, -hh * 0.1); ctx.quadraticCurveTo(hl * 0.8, -hh * 0.7, headX - 4, headY); ctx.stroke();
         ctx.fillStyle = f.primaryColor;
-        ctx.beginPath(); ctx.ellipse(hl * 0.65 + neckLen, -hh * 0.55, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(headX, headY, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 2; ctx.stroke();
+        // Eye & friendly smile on the head
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath(); ctx.arc(headX + 6, headY - 3, 4.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = f.isAttacking ? '#FFB300' : '#000000';
+        ctx.beginPath(); ctx.arc(headX + 7, headY - 3, 2.2, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = f.secondaryColor;
         ctx.beginPath(); ctx.ellipse(hl * 0.15, hh * 0.75, hl * 0.22, hh * 0.45, 0.35, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(-hl * 0.28, hh * 0.7, hl * 0.2, hh * 0.4, -0.3, 0, Math.PI * 2); ctx.fill();
-        // Reptilian dorsal spots
         ctx.fillStyle = 'rgba(255,255,255,0.22)';
         for (let s = -2; s <= 1; s++) {
           ctx.beginPath(); ctx.arc(s * hl * 0.22, -hh * 0.35, 5, 0, Math.PI * 2); ctx.fill();
@@ -1238,7 +1245,7 @@ export class DiveGame {
       }
 
       if (f.species === 'LIOPLEURODON' || f.species === 'MOSASAURUS') {
-        // Reptilian dorsal ridge scutes + mottled camo + 4 large paddles
+        // Reptilian dorsal ridge scutes + tapered jaw line + 4 large paddles
         ctx.fillStyle = f.secondaryColor;
         ctx.beginPath(); ctx.ellipse(hl * 0.2, hh * 0.75, hl * 0.24, hh * 0.42, 0.3, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(-hl * 0.3, hh * 0.7, hl * 0.2, hh * 0.36, -0.25, 0, Math.PI * 2); ctx.fill();
@@ -1246,6 +1253,9 @@ export class DiveGame {
         for (let sc = -3; sc <= 2; sc++) {
           ctx.beginPath(); ctx.arc(sc * hl * 0.2, -hh * 0.82, 5.5, Math.PI, 0); ctx.fill();
         }
+        // Friendly rounded jaw & teeth-line
+        ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(hl * 0.42, hh * 0.12); ctx.lineTo(hl * 0.82, hh * 0.06); ctx.stroke();
       }
 
       if (f.species === 'ICHTHYOSAURUS') {
@@ -1255,11 +1265,13 @@ export class DiveGame {
       }
     }
 
-    // Friendly eye
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath(); ctx.arc(hl * 0.52, -hh * 0.2, 6, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = f.isAttacking ? '#FFB300' : '#000000';
-    ctx.beginPath(); ctx.arc(hl * 0.54, -hh * 0.2, 3, 0, Math.PI * 2); ctx.fill();
+    // Friendly eye (skip torso eye for long-neck dinosaurs)
+    if (f.species !== 'PLESIOSAURUS' && f.species !== 'ELASMOSAURUS' && f.species !== 'NOTHOSAURUS') {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath(); ctx.arc(hl * 0.52, -hh * 0.2, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = f.isAttacking ? '#FFB300' : '#000000';
+      ctx.beginPath(); ctx.arc(hl * 0.54, -hh * 0.2, 3, 0, Math.PI * 2); ctx.fill();
+    }
 
     if (f.isAttacking && !f.isSleeping) {
       ctx.strokeStyle = 'rgba(255,179,0,0.72)';
@@ -1341,6 +1353,9 @@ export class DiveGame {
     ctx.beginPath(); ctx.arc(22, 12, 5.5, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = this.currentWeapon === 'HARPOON' ? '#455A64' : '#00E5FF';
     this.roundRect(ctx, 18, 5, 36, 11, 4); ctx.fill();
+    // Sculpted harpoon tip / bubble-gun nozzle
+    ctx.fillStyle = this.currentWeapon === 'HARPOON' ? '#CFD8DC' : '#80DEEA';
+    ctx.beginPath(); ctx.moveTo(54, 4); ctx.lineTo(65, 10.5); ctx.lineTo(54, 17); ctx.closePath(); ctx.fill();
 
     if (this.mountedCreature) {
       ctx.fillStyle = '#FF80AB';
@@ -1405,7 +1420,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.4', w - 14, h - 12);
+    ctx.fillText('v1.5', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

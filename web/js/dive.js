@@ -1036,24 +1036,98 @@ export class DiveGame {
     const hh = f.bodyHeight * 0.46;
     const tail = Math.sin(f.swimPhase) * 8;
 
-    ctx.fillStyle = f.primaryColor;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, hl * 0.85, hh, 0, 0, Math.PI * 2);
-    ctx.fill();
+    if (f.species === 'JELLYFISH' || f.species === 'NEON_JELLYFISH') {
+      // Translucent bell + inner glow + swaying tentacles
+      ctx.fillStyle = f.primaryColor;
+      ctx.beginPath();
+      ctx.arc(0, -hh * 0.15, hl * 0.72, Math.PI, 0);
+      ctx.quadraticCurveTo(hl * 0.72, hh * 0.25, -hl * 0.72, hh * 0.25);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(0, -hh * 0.3, hl * 0.42, hh * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = f.secondaryColor;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      for (let t = -2; t <= 2; t++) {
+        const tx = t * (hl * 0.24);
+        const tw = Math.sin(f.swimPhase + t) * 7;
+        ctx.beginPath();
+        ctx.moveTo(tx, hh * 0.2);
+        ctx.quadraticCurveTo(tx + tw, hh * 0.65, tx - tw * 0.5, hh * 1.15);
+        ctx.stroke();
+      }
+    } else if (f.species === 'TURTLE') {
+      // Rounded carapace + scutes + flippers + blush
+      ctx.fillStyle = f.secondaryColor;
+      ctx.beginPath(); ctx.ellipse(hl * 0.35, hh * 0.55, hl * 0.28, hh * 0.22, 0.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-hl * 0.35, hh * 0.5, hl * 0.22, hh * 0.18, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = f.primaryColor;
+      ctx.beginPath(); ctx.ellipse(0, 0, hl * 0.78, hh * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(0, -hh * 0.1, hl * 0.45, hh * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#FF8A80';
+      ctx.beginPath(); ctx.arc(hl * 0.55, hh * 0.1, 4, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Anatomical Bézier hull + dorsal/pectoral fins + countershading
+      ctx.fillStyle = f.secondaryColor;
+      // Swept dorsal fin
+      ctx.beginPath();
+      ctx.moveTo(-hl * 0.15, -hh * 0.82);
+      ctx.quadraticCurveTo(-hl * 0.35, -hh * 1.45, -hl * 0.52, -hh * 0.72);
+      ctx.closePath();
+      ctx.fill();
+      // Crescent tail fin
+      ctx.beginPath();
+      ctx.moveTo(-hl * 0.68, 0);
+      ctx.quadraticCurveTo(-hl * 0.95, -hh * 0.5, -hl * 1.18 + tail, -hh * 0.85);
+      ctx.quadraticCurveTo(-hl * 0.92 + tail * 0.4, 0, -hl * 1.18 + tail, hh * 0.85);
+      ctx.quadraticCurveTo(-hl * 0.95, hh * 0.5, -hl * 0.68, 0);
+      ctx.fill();
 
-    ctx.fillStyle = f.secondaryColor;
-    ctx.beginPath();
-    ctx.moveTo(-hl * 0.65, 0);
-    ctx.lineTo(-hl * 1.15 + tail, -hh * 0.75);
-    ctx.lineTo(-hl * 1.15 + tail, hh * 0.75);
-    ctx.closePath();
-    ctx.fill();
+      // Main streamlined body
+      ctx.fillStyle = f.primaryColor;
+      ctx.beginPath();
+      ctx.moveTo(hl * 0.88, 0);
+      ctx.bezierCurveTo(hl * 0.55, -hh * 1.05, -hl * 0.45, -hh * 0.95, -hl * 0.78, 0);
+      ctx.bezierCurveTo(-hl * 0.45, hh * 0.95, hl * 0.55, hh * 1.05, hl * 0.88, 0);
+      ctx.closePath();
+      ctx.fill();
 
-    // Eye
+      // Belly countershading highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.beginPath();
+      ctx.ellipse(hl * 0.08, hh * 0.32, hl * 0.52, hh * 0.36, 0, 0, Math.PI);
+      ctx.fill();
+
+      if (f.species === 'CLOWNFISH') {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(hl * 0.15, -hh * 0.72, hl * 0.16, hh * 1.44);
+        ctx.fillRect(-hl * 0.32, -hh * 0.65, hl * 0.15, hh * 1.3);
+      }
+
+      if (f.species === 'ANGLERFISH') {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = 'rgba(0,229,255,0.55)';
+        ctx.beginPath(); ctx.arc(hl * 0.98, -hh * 0.65, 11, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Friendly eye
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath(); ctx.arc(hl * 0.52, -hh * 0.2, 6, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = f.isAttacking ? '#FFB300' : '#000000';
     ctx.beginPath(); ctx.arc(hl * 0.54, -hh * 0.2, 3, 0, Math.PI * 2); ctx.fill();
+
+    if (f.isAttacking && !f.isSleeping) {
+      ctx.strokeStyle = 'rgba(255,179,0,0.72)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, hh * 1.25, 0, Math.PI * 2); ctx.stroke();
+    }
 
     ctx.restore();
 
@@ -1073,26 +1147,35 @@ export class DiveGame {
     ctx.scale(this.facingScale, 1);
     ctx.rotate(this.diverAngle);
 
-    // Headlamp cone
+    // Headlamp cone (cached gradient)
     const lr = this.state.getLightRadius();
-    const coneGrad = ctx.createRadialGradient(45, 0, 5, 45, 0, lr);
-    coneGrad.addColorStop(0, 'rgba(255,253,231,0.45)');
-    coneGrad.addColorStop(0.55, 'rgba(255,224,130,0.14)');
-    coneGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = coneGrad;
+    if (!this._cachedConeGrad || this._cachedConeLr !== lr) {
+      this._cachedConeLr = lr;
+      const coneGrad = ctx.createRadialGradient(45, 0, 5, 45, 0, lr);
+      coneGrad.addColorStop(0, 'rgba(255,253,231,0.45)');
+      coneGrad.addColorStop(0.55, 'rgba(255,224,130,0.14)');
+      coneGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      this._cachedConeGrad = coneGrad;
+    }
+    ctx.fillStyle = this._cachedConeGrad;
     ctx.beginPath();
     ctx.moveTo(42, -8); ctx.lineTo(lr, -lr * 0.35); ctx.lineTo(lr, lr * 0.35); ctx.closePath();
     ctx.fill();
 
-    // Fins
+    // Articulated 2-joint kicking legs + ribbed flippers
     const k1 = Math.sin(this.swimCycle) * 14;
     const k2 = Math.sin(this.swimCycle + Math.PI) * 14;
+    ctx.strokeStyle = '#01579B'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-22, -10); ctx.lineTo(-42, -12 + k1 * 0.45); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-22, 10); ctx.lineTo(-42, 12 + k2 * 0.45); ctx.stroke();
     ctx.fillStyle = '#FF6D00';
-    ctx.beginPath(); ctx.moveTo(-30, -8); ctx.lineTo(-68, -18 + k1); ctx.lineTo(-52, -3 + k1 * 0.5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-40, -12 + k1 * 0.45); ctx.lineTo(-74, -22 + k1); ctx.lineTo(-68, -4 + k1 * 0.7); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#FF8500';
-    ctx.beginPath(); ctx.moveTo(-30, 8); ctx.lineTo(-68, 18 + k2); ctx.lineTo(-52, 3 + k2 * 0.5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-40, 12 + k2 * 0.45); ctx.lineTo(-74, 22 + k2); ctx.lineTo(-68, 4 + k2 * 0.7); ctx.closePath(); ctx.fill();
 
-    // Tanks & wetsuit
+    // Twin tanks + valve & wetsuit
+    ctx.fillStyle = '#455A64';
+    ctx.fillRect(-32, -26, 10, 6);
     ctx.fillStyle = '#FFD166';
     this.roundRect(ctx, -36, -22, 18, 44, 7); ctx.fill();
     ctx.fillStyle = '#0077BE';
@@ -1113,9 +1196,19 @@ export class DiveGame {
     ctx.lineWidth = 3.5;
     ctx.beginPath(); ctx.arc(32, -20, 48, Math.PI * 1.14, Math.PI * 1.46); ctx.stroke();
 
-    // Weapon
+    // Gloved arm + sculpted Weapon
+    ctx.strokeStyle = '#0288D1'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(6, 14); ctx.lineTo(22, 12); ctx.stroke();
+    ctx.fillStyle = '#FFD54F';
+    ctx.beginPath(); ctx.arc(22, 12, 5.5, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = this.currentWeapon === 'HARPOON' ? '#455A64' : '#00E5FF';
     this.roundRect(ctx, 18, 5, 36, 11, 4); ctx.fill();
+
+    if (this.mountedCreature) {
+      ctx.fillStyle = '#FF80AB';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText('♥', -8, -54);
+    }
 
     ctx.restore();
 
@@ -1174,7 +1267,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.0', w - 14, h - 12);
+    ctx.fillText('v1.1', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

@@ -41,6 +41,12 @@ public class DiverGameView extends View {
     private final Paint lightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint envPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint abyssOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint bgPaint = new Paint();
+    private final Paint skyPaint = new Paint();
+    private final Path reusableEnvPath = new Path();
+    private final RectF reusableRectF = new RectF();
+    private float cachedBgCameraY = Float.NaN;
+    private float cachedSkyCameraY = Float.NaN;
     private final Bitmap kidHeadBitmap;
     private final RectF kidHeadRect = new RectF(-22f, -74f, 86f, 34f);
     private final RectF hudAvatarRect = new RectF(34f, 27f, 114f, 107f);
@@ -1342,90 +1348,110 @@ public class DiverGameView extends View {
         if (w == 0 || h == 0) return;
 
         // Sequence 1: 4-Tier Depth Water Color Gradient (Turquoise -> Ocean -> Abyssal Dark)
-        Paint bgPaint = new Paint();
-        bgPaint.setShader(new LinearGradient(
-            0, -cameraY, 0, worldHeight - cameraY,
-            new int[]{ 0xFF4DC9E6, 0xFF0077BE, 0xFF003865, 0xFF001529, 0xFF000814, 0xFF000308 },
-            new float[]{ 0.0f, 0.18f, 0.45f, 0.70f, 0.88f, 1.0f },
-            Shader.TileMode.CLAMP
-        ));
+        if (Float.isNaN(cachedBgCameraY) || Math.abs(cameraY - cachedBgCameraY) > 1.5f) {
+            cachedBgCameraY = cameraY;
+            bgPaint.setShader(new LinearGradient(
+                0, -cameraY, 0, worldHeight - cameraY,
+                new int[]{ 0xFF4DC9E6, 0xFF0077BE, 0xFF003865, 0xFF001529, 0xFF000814, 0xFF000308 },
+                new float[]{ 0.0f, 0.18f, 0.45f, 0.70f, 0.88f, 1.0f },
+                Shader.TileMode.CLAMP
+            ));
+        }
         canvas.drawRect(0, 0, w, h, bgPaint);
 
         // Tropical Sky above ocean surface (visible near surface)
         if (cameraY < 160f) {
-            Paint skyPaint = new Paint();
-            skyPaint.setShader(new LinearGradient(
-                0, -cameraY, 0, 145f - cameraY,
-                new int[]{ 0xFF64B5F6, 0xFFB3E5FC, 0xFFE0F7FA },
-                new float[]{ 0f, 0.6f, 1f },
-                Shader.TileMode.CLAMP
-            ));
+            if (Float.isNaN(cachedSkyCameraY) || Math.abs(cameraY - cachedSkyCameraY) > 1.5f) {
+                cachedSkyCameraY = cameraY;
+                skyPaint.setShader(new LinearGradient(
+                    0, -cameraY, 0, 145f - cameraY,
+                    new int[]{ 0xFF64B5F6, 0xFFB3E5FC, 0xFFE0F7FA },
+                    new float[]{ 0f, 0.6f, 1f },
+                    Shader.TileMode.CLAMP
+                ));
+            }
             canvas.drawRect(0, 0, w, Math.max(0f, 145f - cameraY), skyPaint);
         }
+
+        // Parallax Far Canyon Cliffs (0.4x scroll for depth)
+        canvas.save();
+        canvas.translate(-cameraX * 0.4f, -cameraY * 0.4f);
+        envPaint.setStyle(Paint.Style.FILL);
+        envPaint.setColor(0x28001A33);
+        reusableEnvPath.reset();
+        reusableEnvPath.moveTo(0, 140f);
+        reusableEnvPath.lineTo(440f, 760f);
+        reusableEnvPath.lineTo(290f, 1850f);
+        reusableEnvPath.lineTo(520f, 3150f);
+        reusableEnvPath.lineTo(360f, worldHeight);
+        reusableEnvPath.lineTo(0, worldHeight);
+        reusableEnvPath.close();
+        canvas.drawPath(reusableEnvPath, envPaint);
+
+        reusableEnvPath.reset();
+        reusableEnvPath.moveTo(worldWidth, 140f);
+        reusableEnvPath.lineTo(worldWidth - 420f, 820f);
+        reusableEnvPath.lineTo(worldWidth - 260f, 1950f);
+        reusableEnvPath.lineTo(worldWidth - 500f, 3100f);
+        reusableEnvPath.lineTo(worldWidth - 340f, worldHeight);
+        reusableEnvPath.lineTo(worldWidth, worldHeight);
+        reusableEnvPath.close();
+        canvas.drawPath(reusableEnvPath, envPaint);
+        canvas.restore();
 
         canvas.save();
         float shakeX = (screenShakeTimer > 0f) ? (random.nextFloat() - 0.5f) * 16f : 0f;
         float shakeY = (screenShakeTimer > 0f) ? (random.nextFloat() - 0.5f) * 16f : 0f;
         canvas.translate(-cameraX + shakeX, -cameraY + shakeY);
 
-        // Dave the Diver Blue Hole Layered Canyon Cliffs (Left & Right)
-        envPaint.setStyle(Paint.Style.FILL);
-        envPaint.setColor(0x28001A33);
-        Path farLeftCliff = new Path();
-        farLeftCliff.moveTo(0, 140f);
-        farLeftCliff.lineTo(440f, 760f);
-        farLeftCliff.lineTo(290f, 1850f);
-        farLeftCliff.lineTo(520f, 3150f);
-        farLeftCliff.lineTo(360f, worldHeight);
-        farLeftCliff.lineTo(0, worldHeight);
-        farLeftCliff.close();
-        canvas.drawPath(farLeftCliff, envPaint);
-
-        Path farRightCliff = new Path();
-        farRightCliff.moveTo(worldWidth, 140f);
-        farRightCliff.lineTo(worldWidth - 420f, 820f);
-        farRightCliff.lineTo(worldWidth - 260f, 1950f);
-        farRightCliff.lineTo(worldWidth - 500f, 3100f);
-        farRightCliff.lineTo(worldWidth - 340f, worldHeight);
-        farRightCliff.lineTo(worldWidth, worldHeight);
-        farRightCliff.close();
-        canvas.drawPath(farRightCliff, envPaint);
+        // Drifting Shallow Water Caustic Light Ovals
+        if (cameraY < 750f) {
+            lightPaint.setStyle(Paint.Style.FILL);
+            float causticFade = Math.max(0f, 1f - cameraY / 750f);
+            lightPaint.setColor(Color.argb((int) (26 * causticFade), 178, 235, 242));
+            for (int c = 0; c < 6; c++) {
+                float cx = 240f + c * 380f + (float) Math.sin(now / 1400.0 + c) * 65f;
+                float cy = 220f + (c % 3) * 140f + (float) Math.cos(now / 1100.0 + c) * 24f;
+                reusableRectF.set(cx - 110f, cy - 22f, cx + 110f, cy + 22f);
+                canvas.drawOval(reusableRectF, lightPaint);
+            }
+        }
 
         // Foreground Rocky Trench Silhouettes
         envPaint.setColor(0x45001022);
-        Path nearLeftCliff = new Path();
-        nearLeftCliff.moveTo(0, 140f);
-        nearLeftCliff.lineTo(170f, 920f);
-        nearLeftCliff.lineTo(110f, 2100f);
-        nearLeftCliff.lineTo(230f, 3400f);
-        nearLeftCliff.lineTo(140f, worldHeight);
-        nearLeftCliff.lineTo(0, worldHeight);
-        nearLeftCliff.close();
-        canvas.drawPath(nearLeftCliff, envPaint);
+        reusableEnvPath.reset();
+        reusableEnvPath.moveTo(0, 140f);
+        reusableEnvPath.lineTo(170f, 920f);
+        reusableEnvPath.lineTo(110f, 2100f);
+        reusableEnvPath.lineTo(230f, 3400f);
+        reusableEnvPath.lineTo(140f, worldHeight);
+        reusableEnvPath.lineTo(0, worldHeight);
+        reusableEnvPath.close();
+        canvas.drawPath(reusableEnvPath, envPaint);
 
-        Path nearRightCliff = new Path();
-        nearRightCliff.moveTo(worldWidth, 140f);
-        nearRightCliff.lineTo(worldWidth - 160f, 960f);
-        nearRightCliff.lineTo(worldWidth - 105f, 2200f);
-        nearRightCliff.lineTo(worldWidth - 220f, 3500f);
-        nearRightCliff.lineTo(worldWidth - 135f, worldHeight);
-        nearRightCliff.lineTo(worldWidth, worldHeight);
-        nearRightCliff.close();
-        canvas.drawPath(nearRightCliff, envPaint);
+        reusableEnvPath.reset();
+        reusableEnvPath.moveTo(worldWidth, 140f);
+        reusableEnvPath.lineTo(worldWidth - 160f, 960f);
+        reusableEnvPath.lineTo(worldWidth - 105f, 2200f);
+        reusableEnvPath.lineTo(worldWidth - 220f, 3500f);
+        reusableEnvPath.lineTo(worldWidth - 135f, worldHeight);
+        reusableEnvPath.lineTo(worldWidth, worldHeight);
+        reusableEnvPath.close();
+        canvas.drawPath(reusableEnvPath, envPaint);
 
         // Abyssal Seafloor & Glowing Hydrothermal Vents
         if (cameraY + h > worldHeight - 250f) {
             envPaint.setColor(0xFF040D1A);
-            Path seabed = new Path();
-            seabed.moveTo(0, worldHeight - 85f);
+            reusableEnvPath.reset();
+            reusableEnvPath.moveTo(0, worldHeight - 85f);
             for (float sx = 0; sx <= worldWidth; sx += 260f) {
                 float mound = (float) Math.sin(sx * 0.005f) * 28f;
-                seabed.lineTo(sx, worldHeight - 85f + mound);
+                reusableEnvPath.lineTo(sx, worldHeight - 85f + mound);
             }
-            seabed.lineTo(worldWidth, worldHeight);
-            seabed.lineTo(0, worldHeight);
-            seabed.close();
-            canvas.drawPath(seabed, envPaint);
+            reusableEnvPath.lineTo(worldWidth, worldHeight);
+            reusableEnvPath.lineTo(0, worldHeight);
+            reusableEnvPath.close();
+            canvas.drawPath(reusableEnvPath, envPaint);
 
             float ventPulse = 0.65f + 0.35f * (float) Math.sin(now / 350.0);
             for (float vx = 420f; vx < worldWidth - 300f; vx += 680f) {
@@ -1879,7 +1905,7 @@ public class DiverGameView extends View {
             textPaint.setColor(0xFFFFD700);
             textPaint.setTextSize(22f);
             textPaint.setFakeBoldText(true);
-            canvas.drawText("🎁 按 [OK] 開啟！(+" + tc.rewardCoins + " 金幣)", tc.x - 110f, tc.y - 50f, textPaint);
+            // Prompt handled by renderNearbyActionPrompt
         }
 
         // Chest Body
@@ -2031,13 +2057,13 @@ public class DiverGameView extends View {
         envPaint.setStyle(Paint.Style.FILL);
 
         // Central Kelp Stem
-        Path stem = new Path();
-        stem.moveTo(kp.x - 7f, kp.baseY);
-        stem.quadTo(kp.x + wave * 0.4f, kp.baseY - kp.height * 0.5f, kp.x + wave, kp.baseY - kp.height);
-        stem.lineTo(kp.x + wave + 9f, kp.baseY - kp.height);
-        stem.quadTo(kp.x + 9f + wave * 0.4f, kp.baseY - kp.height * 0.5f, kp.x + 9f, kp.baseY);
-        stem.close();
-        canvas.drawPath(stem, envPaint);
+        reusableEnvPath.reset();
+        reusableEnvPath.moveTo(kp.x - 7f, kp.baseY);
+        reusableEnvPath.quadTo(kp.x + wave * 0.4f, kp.baseY - kp.height * 0.5f, kp.x + wave, kp.baseY - kp.height);
+        reusableEnvPath.lineTo(kp.x + wave + 9f, kp.baseY - kp.height);
+        reusableEnvPath.quadTo(kp.x + 9f + wave * 0.4f, kp.baseY - kp.height * 0.5f, kp.x + 9f, kp.baseY);
+        reusableEnvPath.close();
+        canvas.drawPath(reusableEnvPath, envPaint);
 
         // Branching Leaf Fronds & Golden Air Vesicles
         float stepH = kp.height / (kp.leafCount + 1);
@@ -2052,49 +2078,59 @@ public class DiverGameView extends View {
             canvas.drawCircle(stemX + sideSign * 7f, frondY, 5f, envPaint);
 
             envPaint.setColor(kelpColor);
-            Path leaf = new Path();
-            leaf.moveTo(stemX, frondY);
-            leaf.quadTo(stemX + sideSign * 35f, frondY - 18f + leafWave * 0.5f, stemX + sideSign * 65f, frondY - 8f + leafWave);
-            leaf.quadTo(stemX + sideSign * 35f, frondY + 12f + leafWave * 0.5f, stemX, frondY + 4f);
-            leaf.close();
-            canvas.drawPath(leaf, envPaint);
+            reusableEnvPath.reset();
+            reusableEnvPath.moveTo(stemX, frondY);
+            reusableEnvPath.quadTo(stemX + sideSign * 35f, frondY - 18f + leafWave * 0.5f, stemX + sideSign * 65f, frondY - 8f + leafWave);
+            reusableEnvPath.quadTo(stemX + sideSign * 35f, frondY + 12f + leafWave * 0.5f, stemX, frondY + 4f);
+            reusableEnvPath.close();
+            canvas.drawPath(reusableEnvPath, envPaint);
         }
     }
 
     private void renderCoralShelf(Canvas canvas, CoralShelf cs, long now) {
+        // Organic rounded rock mound base
         envPaint.setColor(0xFF263238);
         envPaint.setStyle(Paint.Style.FILL);
-        canvas.drawRoundRect(cs.x, cs.y, cs.x + cs.width, cs.y + 24f, 10f, 10f, envPaint);
+        reusableRectF.set(cs.x, cs.y - 4f, cs.x + cs.width, cs.y + 28f);
+        canvas.drawOval(reusableRectF, envPaint);
         envPaint.setColor(0xFF37474F);
-        canvas.drawRect(cs.x + 8f, cs.y + 2f, cs.x + cs.width - 8f, cs.y + 12f, envPaint);
+        reusableRectF.set(cs.x + 12f, cs.y, cs.x + cs.width - 12f, cs.y + 18f);
+        canvas.drawOval(reusableRectF, envPaint);
 
         envPaint.setColor(cs.color);
         if (cs.coralType == 0) {
             for (float cx = cs.x + 20f; cx < cs.x + cs.width - 20f; cx += 32f) {
-                Path branch = new Path();
-                branch.moveTo(cx, cs.y);
-                branch.lineTo(cx - 10f, cs.y - 38f);
-                branch.lineTo(cx - 6f, cs.y - 42f);
-                branch.lineTo(cx, cs.y - 25f);
-                branch.lineTo(cx + 8f, cs.y - 44f);
-                branch.lineTo(cx + 12f, cs.y - 40f);
-                branch.lineTo(cx + 4f, cs.y);
-                branch.close();
-                canvas.drawPath(branch, envPaint);
+                reusableEnvPath.reset();
+                reusableEnvPath.moveTo(cx, cs.y);
+                reusableEnvPath.lineTo(cx - 10f, cs.y - 38f);
+                reusableEnvPath.lineTo(cx - 6f, cs.y - 42f);
+                reusableEnvPath.lineTo(cx, cs.y - 25f);
+                reusableEnvPath.lineTo(cx + 8f, cs.y - 44f);
+                reusableEnvPath.lineTo(cx + 12f, cs.y - 40f);
+                reusableEnvPath.lineTo(cx + 4f, cs.y);
+                reusableEnvPath.close();
+                canvas.drawPath(reusableEnvPath, envPaint);
             }
         } else if (cs.coralType == 1) {
             for (int t = 0; t < 3; t++) {
                 float ty = cs.y - 12f - t * 16f;
                 float tw = cs.width * (0.8f - t * 0.15f);
                 float tx = cs.x + (cs.width - tw) / 2f;
-                canvas.drawOval(new RectF(tx, ty - 6f, tx + tw, ty + 6f), envPaint);
+                reusableRectF.set(tx, ty - 6f, tx + tw, ty + 6f);
+                canvas.drawOval(reusableRectF, envPaint);
             }
         } else {
+            envPaint.setStyle(Paint.Style.STROKE);
+            envPaint.setStrokeCap(Paint.Cap.ROUND);
+            envPaint.setStrokeWidth(7f);
             for (float cx = cs.x + 24f; cx < cs.x + cs.width - 24f; cx += 18f) {
-                float wave = (float) Math.sin((now / 500.0) + cx) * 8f;
-                canvas.drawLine(cx, cs.y, cx + wave, cs.y - 26f, envPaint);
-                canvas.drawCircle(cx + wave, cs.y - 26f, 3.5f, envPaint);
+                float wave = (float) Math.sin((now / 500.0) + cx) * 9f;
+                reusableEnvPath.reset();
+                reusableEnvPath.moveTo(cx, cs.y + 2f);
+                reusableEnvPath.quadTo(cx + wave * 0.4f, cs.y - 14f, cx + wave, cs.y - 28f);
+                canvas.drawPath(reusableEnvPath, envPaint);
             }
+            envPaint.setStyle(Paint.Style.FILL);
         }
     }
 
@@ -2127,10 +2163,13 @@ public class DiverGameView extends View {
         }
 
         if (f.isAttacking && !f.isSleeping) {
-            textPaint.setColor(0xFFFF1744);
-            textPaint.setTextSize(24f);
-            textPaint.setFakeBoldText(true);
-            canvas.drawText("⚠️ 獵食衝刺！", -60f, -f.bodyHeight * 1.15f, textPaint);
+            fishPaint.setStyle(Paint.Style.STROKE);
+            fishPaint.setStrokeWidth(3f);
+            fishPaint.setColor(0xAAFFB300);
+            canvas.drawCircle(0, 0, f.bodyHeight * 0.85f, fishPaint);
+            fishPaint.setStyle(Paint.Style.FILL);
+            fishPaint.setColor(0xFFFFB300);
+            canvas.drawCircle(f.length * 0.25f, -f.bodyHeight * 0.2f, 5f, fishPaint);
         }
 
         fishPaint.setStyle(Paint.Style.FILL);
@@ -2343,7 +2382,7 @@ public class DiverGameView extends View {
             if (mountedCreature == null && Math.hypot(diverX - f.x, diverY - f.y) < 130f) {
                 textPaint.setColor(0xFF00E676);
                 textPaint.setTextSize(22f);
-                canvas.drawText("🐢 按 [OK] 騎上海龜！", -80f, -halfH * 1.3f, textPaint);
+                // Prompt handled by renderNearbyActionPrompt
             }
         } else if (f.species == RealisticFish.Species.BLUE_WHALE) {
             // Giant Blue Whale
@@ -2393,7 +2432,7 @@ public class DiverGameView extends View {
             if (mountedCreature == null && Math.hypot(diverX - f.x, diverY - f.y) < 180f) {
                 textPaint.setColor(0xFF40C4FF);
                 textPaint.setTextSize(24f);
-                canvas.drawText("🐋 按 [OK] 騎乘藍鯨！(彩虹噴水)", -110f, -halfH * 1.3f, textPaint);
+                // Prompt handled by renderNearbyActionPrompt
             }
         } else {
             // General Coral Fish (Clownfish, Blue Tang, Yellow Tang, Tuna)
@@ -2568,9 +2607,14 @@ public class DiverGameView extends View {
         }
 
         if (mountedCreature != null) {
-            textPaint.setColor(0xFFFFD700);
-            textPaint.setTextSize(20f);
-            canvas.drawText("🏇 騎乘中", -30f, -38f, textPaint);
+            diverPaint.setStyle(Paint.Style.STROKE);
+            diverPaint.setStrokeWidth(3.5f);
+            diverPaint.setColor(0xCCFFD700);
+            canvas.drawCircle(0, 0, 48f, diverPaint);
+            diverPaint.setStyle(Paint.Style.FILL);
+            textPaint.setColor(0xFFFF80AB);
+            textPaint.setTextSize(22f);
+            canvas.drawText("♥", -8f, -52f, textPaint);
         }
 
         canvas.restore();

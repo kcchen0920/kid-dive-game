@@ -772,33 +772,38 @@ export class DiveGame {
     ctx.save();
     ctx.scale(this.dpr, this.dpr);
 
-    // Water gradient
-    const bgGrad = ctx.createLinearGradient(0, -this.cameraY, 0, this.worldHeight - this.cameraY);
-    bgGrad.addColorStop(0.0, '#4DC9E6');
-    bgGrad.addColorStop(0.18, '#0077BE');
-    bgGrad.addColorStop(0.45, '#003865');
-    bgGrad.addColorStop(0.70, '#001529');
-    bgGrad.addColorStop(0.88, '#000814');
-    bgGrad.addColorStop(1.0, '#000308');
-    ctx.fillStyle = bgGrad;
+    // Water gradient (cached when cameraY changes < 1.5px)
+    if (!this._cachedBgGrad || Math.abs(this.cameraY - this._cachedBgCamY) > 1.5) {
+      this._cachedBgCamY = this.cameraY;
+      const bgGrad = ctx.createLinearGradient(0, -this.cameraY, 0, this.worldHeight - this.cameraY);
+      bgGrad.addColorStop(0.0, '#4DC9E6');
+      bgGrad.addColorStop(0.18, '#0077BE');
+      bgGrad.addColorStop(0.45, '#003865');
+      bgGrad.addColorStop(0.70, '#001529');
+      bgGrad.addColorStop(0.88, '#000814');
+      bgGrad.addColorStop(1.0, '#000308');
+      this._cachedBgGrad = bgGrad;
+    }
+    ctx.fillStyle = this._cachedBgGrad;
     ctx.fillRect(0, 0, w, h);
 
     // Tropical sky above y=140
     if (this.cameraY < 160) {
-      const skyGrad = ctx.createLinearGradient(0, -this.cameraY, 0, 145 - this.cameraY);
-      skyGrad.addColorStop(0, '#64B5F6');
-      skyGrad.addColorStop(0.6, '#B3E5FC');
-      skyGrad.addColorStop(1, '#E0F7FA');
-      ctx.fillStyle = skyGrad;
+      if (!this._cachedSkyGrad || Math.abs(this.cameraY - this._cachedSkyCamY) > 1.5) {
+        this._cachedSkyCamY = this.cameraY;
+        const skyGrad = ctx.createLinearGradient(0, -this.cameraY, 0, 145 - this.cameraY);
+        skyGrad.addColorStop(0, '#64B5F6');
+        skyGrad.addColorStop(0.6, '#B3E5FC');
+        skyGrad.addColorStop(1, '#E0F7FA');
+        this._cachedSkyGrad = skyGrad;
+      }
+      ctx.fillStyle = this._cachedSkyGrad;
       ctx.fillRect(0, 0, w, Math.max(0, 145 - this.cameraY));
     }
 
+    // Parallax Far Canyon Walls (0.4x scroll)
     ctx.save();
-    const shakeX = this.screenShakeTimer > 0 ? (Math.random() - 0.5) * 14 : 0;
-    const shakeY = this.screenShakeTimer > 0 ? (Math.random() - 0.5) * 14 : 0;
-    ctx.translate(-this.cameraX + shakeX, -this.cameraY + shakeY);
-
-    // Canyon walls
+    ctx.translate(-this.cameraX * 0.4, -this.cameraY * 0.4);
     ctx.fillStyle = 'rgba(0, 26, 51, 0.22)';
     ctx.beginPath();
     ctx.moveTo(0, 140); ctx.lineTo(440, 760); ctx.lineTo(290, 1850); ctx.lineTo(520, 3150); ctx.lineTo(360, this.worldHeight); ctx.lineTo(0, this.worldHeight);
@@ -807,14 +812,36 @@ export class DiveGame {
     ctx.beginPath();
     ctx.moveTo(this.worldWidth, 140); ctx.lineTo(this.worldWidth - 420, 820); ctx.lineTo(this.worldWidth - 260, 1950); ctx.lineTo(this.worldWidth - 500, 3100); ctx.lineTo(this.worldWidth - 340, this.worldHeight); ctx.lineTo(this.worldWidth, this.worldHeight);
     ctx.closePath(); ctx.fill();
+    ctx.restore();
 
-    // Volumetric sunbeams
+    ctx.save();
+    const shakeX = this.screenShakeTimer > 0 ? (Math.random() - 0.5) * 14 : 0;
+    const shakeY = this.screenShakeTimer > 0 ? (Math.random() - 0.5) * 14 : 0;
+    ctx.translate(-this.cameraX + shakeX, -this.cameraY + shakeY);
+
+    // Drifting Shallow Water Caustic Ovals
+    if (this.cameraY < 750) {
+      const causticFade = Math.max(0, 1 - this.cameraY / 750);
+      ctx.fillStyle = `rgba(178, 235, 242, ${(0.10 * causticFade).toFixed(3)})`;
+      for (let c = 0; c < 6; c++) {
+        const cx = 240 + c * 380 + Math.sin(now / 1400 + c) * 65;
+        const cy = 220 + (c % 3) * 140 + Math.cos(now / 1100 + c) * 24;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 110, 22, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Volumetric sunbeams (cached gradient)
     const sway = Math.sin(now / 1100) * 55;
-    const rayGrad = ctx.createLinearGradient(0, 140, 0, 980);
-    rayGrad.addColorStop(0, 'rgba(255,255,255,0.16)');
-    rayGrad.addColorStop(0.55, 'rgba(255,255,255,0.06)');
-    rayGrad.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = rayGrad;
+    if (!this._cachedRayGrad) {
+      const rayGrad = ctx.createLinearGradient(0, 140, 0, 980);
+      rayGrad.addColorStop(0, 'rgba(255,255,255,0.16)');
+      rayGrad.addColorStop(0.55, 'rgba(255,255,255,0.06)');
+      rayGrad.addColorStop(1, 'rgba(255,255,255,0)');
+      this._cachedRayGrad = rayGrad;
+    }
+    ctx.fillStyle = this._cachedRayGrad;
     for (let rx = 180; rx < this.worldWidth; rx += 460) {
       ctx.beginPath();
       ctx.moveTo(rx + sway * 0.4, 140);
@@ -917,11 +944,25 @@ export class DiveGame {
       ctx.beginPath(); ctx.arc(bb.x, bb.y, bb.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
-    // Bobo dolphin
+    // Bobo dolphin (vector-drawn)
     if (this.bobo.active || this.bobo.isRescuing) {
-      ctx.font = '64px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('🐬', this.bobo.x, this.bobo.y + 20);
-      ctx.textAlign = 'left';
+      ctx.save();
+      ctx.translate(this.bobo.x, this.bobo.y);
+      const boboWave = Math.sin(now / 220) * 4;
+      ctx.fillStyle = '#4FC3F7';
+      ctx.beginPath(); ctx.ellipse(0, 0, 32, 16, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#E1F5FE';
+      ctx.beginPath(); ctx.ellipse(2, 6, 22, 8, 0, 0, Math.PI); ctx.fill();
+      // Dorsal fin & tail
+      ctx.fillStyle = '#29B6F6';
+      ctx.beginPath(); ctx.moveTo(-4, -14); ctx.quadraticCurveTo(-12, -30, -18, -12); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(-42, -12 + boboWave); ctx.lineTo(-42, 12 + boboWave); ctx.closePath(); ctx.fill();
+      // Eye & smile
+      ctx.fillStyle = '#1A237E';
+      ctx.beginPath(); ctx.arc(16, -3, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#1A237E'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(18, 2, 6, 0.1, 1.4); ctx.stroke();
+      ctx.restore();
     }
 
     // Aim reticle

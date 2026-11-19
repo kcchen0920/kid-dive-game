@@ -153,6 +153,21 @@ export class DiveGame {
     this.spawnSpecies('NEON_JELLYFISH', '七彩霓虹水母', 140, 3.2, 8, 3400, 4400, '#E040FB', '#00E5FF', 64, 64, 0.7);
     this.spawnSpecies('JELLYFISH', '深海水母', 65, 2.5, 6, 1500, 3200, '#CE93D8', '#7B1FA2', 58, 58, 0.65);
 
+    // Random Prehistoric Marine Reptiles (古生代/中生代海洋恐龍隨機出現)
+    const dinos = [
+      ['LIOPLEURODON', '滑齒龍', 520, 620, 1800, 3600, '#37474F', '#80CBC4', 240, 88, 1.35],
+      ['MOSASAURUS', '滄龍', 600, 850, 2200, 4100, '#263238', '#4DD0E1', 270, 94, 1.4],
+      ['PLESIOSAURUS', '蛇頸龍', 420, 340, 1200, 2900, '#00695C', '#A5D6A7', 210, 76, 1.1],
+      ['ELASMOSAURUS', '薄片龍', 460, 380, 1500, 3300, '#1565C0', '#81D4FA', 235, 74, 1.05],
+      ['NOTHOSAURUS', '幻龍', 360, 210, 1000, 2400, '#558B2F', '#DCE775', 185, 64, 1.25],
+      ['ICHTHYOSAURUS', '魚龍', 340, 190, 1100, 2700, '#283593', '#90CAF9', 175, 68, 1.65],
+    ];
+    for (const d of dinos) {
+      if (Math.random() < 0.7) {
+        this.spawnSpecies(d[0], d[1], d[2], d[3], 1 + (Math.random() < 0.35 ? 1 : 0), d[4], d[5], d[6], d[7], d[8], d[9], d[10]);
+      }
+    }
+
     this.resize();
     this.cameraX = Math.max(0, this.diverX - this.viewW / 2);
     this.cameraY = 0;
@@ -852,6 +867,42 @@ export class DiveGame {
       ctx.fill();
     }
 
+    // Subsurface dual-sine refraction ribbon
+    if (this.cameraY < 260) {
+      ctx.strokeStyle = 'rgba(224,247,250,0.35)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      for (let rx = 0; rx <= this.worldWidth; rx += 60) {
+        const ry = 152 + Math.sin(rx * 0.015 + now / 500) * 5 + Math.cos(rx * 0.028 - now / 380) * 3;
+        if (rx === 0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+      }
+      ctx.stroke();
+    }
+
+    // Depth-tinted plankton particles
+    for (const p of this.planktonList) {
+      if (p.y < this.cameraY - 40 || p.y > this.cameraY + h + 40) continue;
+      const depthAlpha = p.y > 2000 ? 0.45 + 0.35 * Math.sin(now / 600 + p.x) : 0.25;
+      ctx.fillStyle = p.y > 2000 ? `rgba(128, 222, 234, ${depthAlpha.toFixed(2)})` : `rgba(255, 255, 255, ${depthAlpha.toFixed(2)})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r || 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Abyssal Seabed & Hydrothermal Vents
+    if (this.cameraY + h > this.worldHeight - 220) {
+      ctx.fillStyle = '#040D1A';
+      ctx.beginPath();
+      ctx.moveTo(0, this.worldHeight - 85);
+      for (let sx = 0; sx <= this.worldWidth; sx += 240) {
+        ctx.lineTo(sx, this.worldHeight - 85 + Math.sin(sx * 0.005) * 26);
+      }
+      ctx.lineTo(this.worldWidth, this.worldHeight);
+      ctx.lineTo(0, this.worldHeight);
+      ctx.closePath();
+      ctx.fill();
+    }
+
     // Surface waves + Cobra Boat
     if (this.cameraY < 260) {
       ctx.strokeStyle = 'rgba(224,247,250,0.85)';
@@ -1109,11 +1160,46 @@ export class DiveGame {
       }
 
       if (f.species === 'ANGLERFISH') {
+        ctx.strokeStyle = '#80DEEA'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(hl * 0.55, -hh * 0.7); ctx.quadraticCurveTo(hl * 0.85, -hh * 1.15, hl * 0.98, -hh * 0.65); ctx.stroke();
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         ctx.fillStyle = 'rgba(0,229,255,0.55)';
         ctx.beginPath(); ctx.arc(hl * 0.98, -hh * 0.65, 11, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
+      }
+
+      if (f.species === 'BLUE_WHALE') {
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 2;
+        for (let p = -1; p <= 2; p++) {
+          ctx.beginPath(); ctx.moveTo(-hl * 0.2, hh * 0.35 + p * 8); ctx.lineTo(hl * 0.45, hh * 0.35 + p * 8); ctx.stroke();
+        }
+      }
+
+      if (f.species === 'REEF_SHARK' || f.species === 'GREAT_SHARK' || f.species === 'GIANT_TUNA') {
+        ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 2;
+        for (let g = 0; g < 3; g++) {
+          ctx.beginPath(); ctx.arc(hl * 0.22 - g * 9, 0, hh * 0.35, -0.5, 0.5); ctx.stroke();
+        }
+      }
+
+      if (f.species === 'PLESIOSAURUS' || f.species === 'ELASMOSAURUS' || f.species === 'NOTHOSAURUS') {
+        // Long graceful prehistoric neck + paddles
+        const neckLen = f.species === 'ELASMOSAURUS' ? hl * 0.95 : hl * 0.62;
+        ctx.strokeStyle = f.primaryColor; ctx.lineWidth = hh * 0.42; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(hl * 0.5, -hh * 0.1); ctx.quadraticCurveTo(hl * 0.8, -hh * 0.7, hl * 0.6 + neckLen, -hh * 0.55); ctx.stroke();
+        ctx.fillStyle = f.primaryColor;
+        ctx.beginPath(); ctx.ellipse(hl * 0.65 + neckLen, -hh * 0.55, 16, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = f.secondaryColor;
+        ctx.beginPath(); ctx.ellipse(hl * 0.15, hh * 0.75, hl * 0.22, hh * 0.45, 0.35, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-hl * 0.28, hh * 0.7, hl * 0.2, hh * 0.4, -0.3, 0, Math.PI * 2); ctx.fill();
+      }
+
+      if (f.species === 'LIOPLEURODON' || f.species === 'MOSASAURUS') {
+        // Four large marine-reptile paddles
+        ctx.fillStyle = f.secondaryColor;
+        ctx.beginPath(); ctx.ellipse(hl * 0.2, hh * 0.75, hl * 0.24, hh * 0.42, 0.3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-hl * 0.3, hh * 0.7, hl * 0.2, hh * 0.36, -0.25, 0, Math.PI * 2); ctx.fill();
       }
     }
 
@@ -1267,7 +1353,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.1', w - 14, h - 12);
+    ctx.fillText('v1.2', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

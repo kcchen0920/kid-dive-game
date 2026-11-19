@@ -149,26 +149,26 @@ export class DiveGame {
     this.spawnSpecies('GIANT_TUNA', '藍鰭巨鮪', 260, 115, 4, 2100, 3300, '#0D47A1', '#81D4FA', 175, 74, 1.9);
     this.spawnSpecies('BLUE_WHALE', '深海巨型藍鯨', 0, 2500, 1, 2200, 3400, '#0277BD', '#B3E5FC', 320, 125, 0.65);
     this.spawnSpecies('GREAT_SHARK', '深海大白鯊', 480, 380, 2, 2300, 3500, '#37474F', '#FFFFFF', 235, 92, 1.45);
-    this.spawnSpecies('ANGLERFISH', '深海發光安康魚', 360, 28, 5, 3450, 4450, '#3E2723', '#00E5FF', 125, 84, 0.9);
-    this.spawnSpecies('NEON_JELLYFISH', '七彩霓虹水母', 140, 3.2, 8, 3400, 4400, '#E040FB', '#00E5FF', 64, 64, 0.7);
-    this.spawnSpecies('JELLYFISH', '深海水母', 65, 2.5, 6, 1500, 3200, '#CE93D8', '#7B1FA2', 58, 58, 0.65);
+    this.spawnSpecies('ANGLERFISH', '深海發光安康魚', 360, 28, 7, 3450, 6550, '#3E2723', '#00E5FF', 125, 84, 0.9);
+    this.spawnSpecies('NEON_JELLYFISH', '七彩霓虹水母', 140, 3.2, 10, 3400, 6500, '#E040FB', '#00E5FF', 64, 64, 0.7);
+    this.spawnSpecies('JELLYFISH', '深海水母', 65, 2.5, 8, 1500, 4600, '#CE93D8', '#7B1FA2', 58, 58, 0.65);
 
-    // Random Prehistoric Marine Reptiles (古生代/中生代海洋恐龍隨機出現)
+    // Random Prehistoric Marine Reptiles (古生代/中生代海洋恐龍隨機出現，延伸至 6600 深海海溝)
     const dinos = [
-      ['LIOPLEURODON', '滑齒龍', 520, 620, 1800, 3600, '#37474F', '#80CBC4', 240, 88, 1.35],
-      ['MOSASAURUS', '滄龍', 600, 850, 2200, 4100, '#263238', '#4DD0E1', 270, 94, 1.4],
-      ['PLESIOSAURUS', '蛇頸龍', 420, 340, 1200, 2900, '#00695C', '#A5D6A7', 210, 76, 1.1],
-      ['ELASMOSAURUS', '薄片龍', 460, 380, 1500, 3300, '#1565C0', '#81D4FA', 235, 74, 1.05],
-      ['NOTHOSAURUS', '幻龍', 360, 210, 1000, 2400, '#558B2F', '#DCE775', 185, 64, 1.25],
-      ['ICHTHYOSAURUS', '魚龍', 340, 190, 1100, 2700, '#283593', '#90CAF9', 175, 68, 1.65],
+      ['LIOPLEURODON', '滑齒龍', 520, 620, 2200, 6400, '#37474F', '#80CBC4', 240, 88, 1.35],
+      ['MOSASAURUS', '滄龍', 600, 850, 2800, 6600, '#263238', '#4DD0E1', 270, 94, 1.4],
+      ['PLESIOSAURUS', '蛇頸龍', 420, 340, 1400, 4800, '#00695C', '#A5D6A7', 210, 76, 1.1],
+      ['ELASMOSAURUS', '薄片龍', 460, 380, 1800, 5600, '#1565C0', '#81D4FA', 235, 74, 1.05],
+      ['NOTHOSAURUS', '幻龍', 360, 210, 1000, 3600, '#558B2F', '#DCE775', 185, 64, 1.25],
+      ['ICHTHYOSAURUS', '魚龍', 340, 190, 1100, 4200, '#283593', '#90CAF9', 175, 68, 1.65],
     ];
     for (const d of dinos) {
-      if (Math.random() < 0.7) {
-        this.spawnSpecies(d[0], d[1], d[2], d[3], 1 + (Math.random() < 0.35 ? 1 : 0), d[4], d[5], d[6], d[7], d[8], d[9], d[10]);
+      if (Math.random() < 0.75) {
+        this.spawnSpecies(d[0], d[1], d[2], d[3], 1 + (Math.random() < 0.4 ? 1 : 0), d[4], d[5], d[6], d[7], d[8], d[9], d[10]);
       }
     }
 
-    // Underwater Cliff Ledges, Swaying Kelp & Glowing Minerals
+    // Underwater Cliff Ledges, Anchored Swaying Kelp & Glowing Minerals
     this.cliffLedges = [];
     for (let cy = 420; cy < this.worldHeight - 300; cy += 480) {
       const leftSide = (Math.floor(cy / 480) % 2 === 0);
@@ -180,19 +180,36 @@ export class DiveGame {
         left: leftSide,
       });
     }
-    this.kelpList = Array.from({ length: 36 }, (_, i) => ({
-      x: 160 + (i / 36) * (this.worldWidth - 320) + (Math.random() - 0.5) * 90,
-      baseY: i % 3 === 0 ? this.worldHeight - 85 : 500 + Math.random() * (this.worldHeight - 900),
-      height: 150 + Math.random() * 160,
-      leafCount: 5 + Math.floor(Math.random() * 4),
-      phase: Math.random() * Math.PI * 2,
-      color: i % 2 === 0 ? '#2E7D32' : '#00695C',
-    }));
-    this.mineralNodes = Array.from({ length: 18 }, (_, i) => ({
-      x: (i % 2 === 0 ? 90 + Math.random() * 240 : this.worldWidth - 90 - Math.random() * 240),
-      y: 700 + i * 320,
+    this.kelpList = [];
+    // Anchor kelp on cliff ledges (zero floating kelp)
+    for (const cl of this.cliffLedges) {
+      for (let k = 0; k < 2; k++) {
+        const kx = cl.left ? (60 + Math.random() * (cl.w * 0.65)) : (this.worldWidth - 60 - Math.random() * (cl.w * 0.65));
+        this.kelpList.push({
+          x: kx, baseY: cl.y + 12,
+          height: 120 + Math.random() * 120,
+          leafCount: 5 + Math.floor(Math.random() * 4),
+          phase: Math.random() * Math.PI * 2,
+          color: k % 2 === 0 ? '#2E7D32' : '#00695C',
+        });
+      }
+    }
+    // Anchor seafloor kelp along the seabed
+    for (let i = 0; i < 18; i++) {
+      const kx = 180 + (i / 18) * (this.worldWidth - 360) + (Math.random() - 0.5) * 60;
+      this.kelpList.push({
+        x: kx, baseY: this.worldHeight - 85 + Math.sin(kx * 0.005) * 24,
+        height: 170 + Math.random() * 150,
+        leafCount: 6 + Math.floor(Math.random() * 4),
+        phase: Math.random() * Math.PI * 2,
+        color: i % 2 === 0 ? '#2E7D32' : '#00695C',
+      });
+    }
+    this.mineralNodes = this.cliffLedges.map((cl, i) => ({
+      x: cl.left ? (cl.w * 0.55) : (this.worldWidth - cl.w * 0.55),
+      y: cl.y + 8,
       color: i % 3 === 0 ? '#00E5FF' : (i % 3 === 1 ? '#E040FB' : '#FFD54F'),
-      size: 18 + Math.random() * 14,
+      size: 20 + Math.random() * 14,
     }));
 
     this.resize();
@@ -242,33 +259,6 @@ export class DiveGame {
   start() {
     this.running = true;
     this.lastFrameTime = performance.now();
-    // Underwater Cliff Ledges, Swaying Kelp & Glowing Minerals
-    this.cliffLedges = [];
-    for (let cy = 420; cy < this.worldHeight - 300; cy += 480) {
-      const leftSide = (Math.floor(cy / 480) % 2 === 0);
-      this.cliffLedges.push({
-        x: leftSide ? 0 : this.worldWidth - 360,
-        y: cy,
-        w: 280 + Math.random() * 140,
-        h: 90 + Math.random() * 50,
-        left: leftSide,
-      });
-    }
-    this.kelpList = Array.from({ length: 36 }, (_, i) => ({
-      x: 160 + (i / 36) * (this.worldWidth - 320) + (Math.random() - 0.5) * 90,
-      baseY: i % 3 === 0 ? this.worldHeight - 85 : 500 + Math.random() * (this.worldHeight - 900),
-      height: 150 + Math.random() * 160,
-      leafCount: 5 + Math.floor(Math.random() * 4),
-      phase: Math.random() * Math.PI * 2,
-      color: i % 2 === 0 ? '#2E7D32' : '#00695C',
-    }));
-    this.mineralNodes = Array.from({ length: 18 }, (_, i) => ({
-      x: (i % 2 === 0 ? 90 + Math.random() * 240 : this.worldWidth - 90 - Math.random() * 240),
-      y: 700 + i * 320,
-      color: i % 3 === 0 ? '#00E5FF' : (i % 3 === 1 ? '#E040FB' : '#FFD54F'),
-      size: 18 + Math.random() * 14,
-    }));
-
     this.resize();
     const loop = (now) => {
       if (!this.running) return;
@@ -943,7 +933,7 @@ export class DiveGame {
       ctx.fill();
     }
 
-    // Underwater Cliff Ledges, Swaying Kelp & Glowing Minerals
+    // Multi-layered Underwater Cliff Ledges, Swaying Kelp & Faceted Glowing Minerals
     for (const cl of this.cliffLedges) {
       if (cl.y < this.cameraY - 200 || cl.y > this.cameraY + h + 200) continue;
       ctx.fillStyle = '#0D2137';
@@ -958,6 +948,16 @@ export class DiveGame {
         ctx.lineTo(this.worldWidth, cl.y + cl.h + 20);
       }
       ctx.closePath(); ctx.fill();
+      // Lit top-rim rock bevel
+      ctx.strokeStyle = 'rgba(79, 195, 247, 0.25)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      if (cl.left) {
+        ctx.moveTo(0, cl.y + 2); ctx.quadraticCurveTo(cl.w * 0.92, cl.y + 10, cl.w * 0.82, cl.y + 24);
+      } else {
+        ctx.moveTo(this.worldWidth, cl.y + 2); ctx.quadraticCurveTo(this.worldWidth - cl.w * 0.92, cl.y + 10, this.worldWidth - cl.w * 0.82, cl.y + 24);
+      }
+      ctx.stroke();
     }
 
     for (const kp of this.kelpList) {
@@ -981,16 +981,30 @@ export class DiveGame {
 
     for (const mn of this.mineralNodes) {
       if (mn.y < this.cameraY - 80 || mn.y > this.cameraY + h + 80) continue;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = mn.color;
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath(); ctx.arc(mn.x, mn.y - mn.size * 0.3, mn.size * 1.15, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      // Faceted 2-tone crystal
       ctx.fillStyle = mn.color;
       ctx.beginPath();
-      ctx.moveTo(mn.x, mn.y - mn.size);
+      ctx.moveTo(mn.x, mn.y - mn.size * 1.15);
       ctx.lineTo(mn.x + mn.size * 0.65, mn.y);
-      ctx.lineTo(mn.x, mn.y + mn.size * 0.5);
+      ctx.lineTo(mn.x, mn.y + mn.size * 0.35);
+      ctx.lineTo(mn.x - mn.size * 0.65, mn.y);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.38)';
+      ctx.beginPath();
+      ctx.moveTo(mn.x, mn.y - mn.size * 1.15);
+      ctx.lineTo(mn.x + mn.size * 0.25, mn.y);
+      ctx.lineTo(mn.x, mn.y + mn.size * 0.35);
       ctx.lineTo(mn.x - mn.size * 0.65, mn.y);
       ctx.closePath(); ctx.fill();
     }
 
-    // Abyssal Seabed & Hydrothermal Vents
+    // Abyssal Seabed & Rising Hydrothermal Vent Plumes
     if (this.cameraY + h > this.worldHeight - 220) {
       ctx.fillStyle = '#040D1A';
       ctx.beginPath();
@@ -1002,6 +1016,16 @@ export class DiveGame {
       ctx.lineTo(0, this.worldHeight);
       ctx.closePath();
       ctx.fill();
+      for (let vx = 480; vx < this.worldWidth - 400; vx += 840) {
+        const pulse = 0.65 + 0.35 * Math.sin(now / 420 + vx);
+        ctx.fillStyle = `rgba(0, 229, 255, ${(0.22 * pulse).toFixed(2)})`;
+        ctx.beginPath(); ctx.arc(vx, this.worldHeight - 95, 34 * pulse, 0, Math.PI * 2); ctx.fill();
+        for (let b = 0; b < 3; b++) {
+          const rise = ((now / 18 + b * 45 + vx) % 140);
+          ctx.fillStyle = 'rgba(178, 235, 242, 0.35)';
+          ctx.beginPath(); ctx.arc(vx + Math.sin(rise * 0.08) * 10, this.worldHeight - 100 - rise, 5 - rise * 0.02, 0, Math.PI * 2); ctx.fill();
+        }
+      }
     }
 
     // Surface waves + Cobra Boat
@@ -1096,10 +1120,11 @@ export class DiveGame {
       ctx.beginPath(); ctx.arc(bb.x, bb.y, bb.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
-    // Bobo dolphin (vector-drawn)
+    // Bobo dolphin (vector-drawn with facing flip)
     if (this.bobo.active || this.bobo.isRescuing) {
       ctx.save();
       ctx.translate(this.bobo.x, this.bobo.y);
+      ctx.scale(this.bobo.x > this.diverX ? -1 : 1, 1);
       const boboWave = Math.sin(now / 220) * 4;
       ctx.fillStyle = '#4FC3F7';
       ctx.beginPath(); ctx.ellipse(0, 0, 32, 16, 0, 0, Math.PI * 2); ctx.fill();
@@ -1160,19 +1185,27 @@ export class DiveGame {
 
     ctx.restore();
 
-    // 160m+ Deep Abyssal Headlamp Vignette
+    // 160m+ Deep Abyssal Headlamp Vignette (cached gradient)
     const depthMeters = Math.max(0, (this.diverY - 140) / 10);
     if (depthMeters > 160) {
       const darkFactor = Math.min(1, (depthMeters - 160) / 180);
       const fx = (this.diverX - this.cameraX) + this.facingScale * 95;
       const fy = this.diverY - this.cameraY;
       const beamR = this.state.getLightRadius() * 1.45;
-      const grad = ctx.createRadialGradient(fx, fy, 10, fx, fy, beamR);
-      grad.addColorStop(0, 'rgba(0,4,14,0)');
-      grad.addColorStop(0.55, `rgba(0,6,18,${(0.37 * darkFactor).toFixed(2)})`);
-      grad.addColorStop(1, `rgba(0,4,14,${(0.72 * darkFactor).toFixed(2)})`);
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
+      if (!this._cachedVigGrad || this._cachedVigR !== beamR || Math.abs(darkFactor - this._cachedVigDark) > 0.02) {
+        this._cachedVigR = beamR;
+        this._cachedVigDark = darkFactor;
+        const grad = ctx.createRadialGradient(0, 0, 10, 0, 0, beamR);
+        grad.addColorStop(0, 'rgba(0,4,14,0)');
+        grad.addColorStop(0.55, `rgba(0,6,18,${(0.37 * darkFactor).toFixed(2)})`);
+        grad.addColorStop(1, `rgba(0,4,14,${(0.72 * darkFactor).toFixed(2)})`);
+        this._cachedVigGrad = grad;
+      }
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.fillStyle = this._cachedVigGrad;
+      ctx.fillRect(-fx, -fy, w, h);
+      ctx.restore();
     }
 
     this.renderHUD(ctx, w, h, now, depthMeters);
@@ -1322,12 +1355,14 @@ export class DiveGame {
       }
 
       if (f.species === 'PLESIOSAURUS' || f.species === 'ELASMOSAURUS' || f.species === 'NOTHOSAURUS') {
-        // Long graceful S-curved prehistoric neck + head + paddles
+        // Dynamic undulating S-curved neck + head + flapping paddles
         const neckLen = f.species === 'ELASMOSAURUS' ? hl * 0.95 : hl * 0.62;
+        const neckWave = Math.sin(f.swimPhase * 0.8) * 9;
+        const padFlap = Math.sin(f.swimPhase * 1.1) * 0.25;
         const headX = hl * 0.65 + neckLen;
-        const headY = -hh * 0.55;
+        const headY = -hh * 0.55 + neckWave;
         ctx.strokeStyle = f.primaryColor; ctx.lineWidth = hh * 0.42; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(hl * 0.5, -hh * 0.1); ctx.quadraticCurveTo(hl * 0.8, -hh * 0.7, headX - 4, headY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(hl * 0.5, -hh * 0.1); ctx.quadraticCurveTo(hl * 0.8, -hh * 0.7 - neckWave * 0.5, headX - 4, headY); ctx.stroke();
         ctx.fillStyle = f.primaryColor;
         ctx.beginPath(); ctx.ellipse(headX, headY, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 2; ctx.stroke();
@@ -1337,8 +1372,8 @@ export class DiveGame {
         ctx.fillStyle = f.isAttacking ? '#FFB300' : '#000000';
         ctx.beginPath(); ctx.arc(headX + 7, headY - 3, 2.2, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = f.secondaryColor;
-        ctx.beginPath(); ctx.ellipse(hl * 0.15, hh * 0.75, hl * 0.22, hh * 0.45, 0.35, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(-hl * 0.28, hh * 0.7, hl * 0.2, hh * 0.4, -0.3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(hl * 0.15, hh * 0.75, hl * 0.22, hh * 0.45, 0.35 + padFlap, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-hl * 0.28, hh * 0.7, hl * 0.2, hh * 0.4, -0.3 - padFlap, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = 'rgba(255,255,255,0.22)';
         for (let s = -2; s <= 1; s++) {
           ctx.beginPath(); ctx.arc(s * hl * 0.22, -hh * 0.35, 5, 0, Math.PI * 2); ctx.fill();
@@ -1346,17 +1381,22 @@ export class DiveGame {
       }
 
       if (f.species === 'LIOPLEURODON' || f.species === 'MOSASAURUS') {
-        // Reptilian dorsal ridge scutes + tapered jaw line + 4 large paddles
+        // Reptilian dorsal ridge scutes + tapered jaw with rounded tooth notches + flapping paddles
+        const padFlap = Math.sin(f.swimPhase) * 0.22;
         ctx.fillStyle = f.secondaryColor;
-        ctx.beginPath(); ctx.ellipse(hl * 0.2, hh * 0.75, hl * 0.24, hh * 0.42, 0.3, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(-hl * 0.3, hh * 0.7, hl * 0.2, hh * 0.36, -0.25, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(hl * 0.2, hh * 0.75, hl * 0.24, hh * 0.42, 0.3 + padFlap, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-hl * 0.3, hh * 0.7, hl * 0.2, hh * 0.36, -0.25 - padFlap, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
         for (let sc = -3; sc <= 2; sc++) {
           ctx.beginPath(); ctx.arc(sc * hl * 0.2, -hh * 0.82, 5.5, Math.PI, 0); ctx.fill();
         }
-        // Friendly rounded jaw & teeth-line
+        // Friendly rounded jaw & rounded tooth dots
         ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(hl * 0.42, hh * 0.12); ctx.lineTo(hl * 0.82, hh * 0.06); ctx.stroke();
+        ctx.fillStyle = '#FFFFFF';
+        for (let t = 0; t < 4; t++) {
+          ctx.beginPath(); ctx.arc(hl * 0.48 + t * 9, hh * 0.13 - t * 1.2, 2.2, 0, Math.PI * 2); ctx.fill();
+        }
       }
 
       if (f.species === 'ICHTHYOSAURUS') {
@@ -1442,10 +1482,15 @@ export class DiveGame {
     ctx.lineWidth = 4.5;
     ctx.beginPath(); ctx.arc(32, -20, 58, 0, Math.PI * 2); ctx.stroke();
 
-    // 3D Glass Highlight Arc
+    // 3D Glass Highlight Arc + periodic regulator exhaust bubbles
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 3.5;
     ctx.beginPath(); ctx.arc(32, -20, 48, Math.PI * 1.14, Math.PI * 1.46); ctx.stroke();
+    for (let rb = 0; rb < 3; rb++) {
+      const rise = ((now / 22 + rb * 26) % 78);
+      ctx.fillStyle = `rgba(224, 247, 250, ${(0.55 - rise / 150).toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(12 - rb * 4 + Math.sin(rise * 0.12) * 5, -52 - rise, 3.5 - rise * 0.025, 0, Math.PI * 2); ctx.fill();
+    }
 
     // Gloved arm + sculpted Weapon
     ctx.strokeStyle = '#0288D1'; ctx.lineWidth = 8; ctx.lineCap = 'round';
@@ -1521,7 +1566,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.6', w - 14, h - 12);
+    ctx.fillText('v1.7', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

@@ -53,6 +53,8 @@ export class DiveGame {
     this.breathTimer = 0;
     this.maxOxygen = this.state.getMaxOxygen();
     this.oxygen = this.maxOxygen;
+    this.wasAtSurface = false;
+    this.surfaceFullNotified = false;
     this.invincibleTimer = 0;
     this.screenShakeTimer = 0;
     this.hurtFlashTimer = 0;
@@ -123,7 +125,7 @@ export class DiveGame {
     // Marine snow & bubbles
     this.planktonList = Array.from({ length: 85 }, () => ({
       x: Math.random() * this.worldWidth,
-      y: Math.random() * this.worldHeight,
+      y: 150 + Math.random() * (this.worldHeight - 210),
       r: 1.5 + Math.random() * 2.5,
       vx: (Math.random() - 0.5) * 0.4,
       vy: -0.3 - Math.random() * 0.5,
@@ -506,8 +508,8 @@ export class DiveGame {
       const d = Math.hypot(tx, ty);
       if (d > 1) { dx = tx / d; dy = ty / d; }
     }
-    this.harpoonVx = dx * 28;
-    this.harpoonVy = dy * 28;
+    this.harpoonVx = dx * 1680;
+    this.harpoonVy = dy * 1680;
     this.sound.playHarpoon();
   }
 
@@ -522,7 +524,7 @@ export class DiveGame {
       const d = Math.hypot(tx, ty);
       if (d > 1) { dx = tx / d; dy = ty / d; }
     }
-    this.activeBubbles.push({ x: sx, y: sy, vx: dx * 16, vy: dy * 16, radius: 20, lifeTime: 2.0 });
+    this.activeBubbles.push({ x: sx, y: sy, vx: dx * 960, vy: dy * 960, radius: 20, lifeTime: 2.0 });
     this.sound.playBubbleGun();
   }
 
@@ -574,6 +576,8 @@ export class DiveGame {
          - (this.keys.has('ArrowUp') || this.keys.has('w') || this.keys.has('W') ? 1 : 0);
       if (kx !== 0) this.targetFacingScale = kx > 0 ? 1 : -1;
     }
+    const kLen = Math.hypot(kx, ky);
+    if (kLen > 1) { kx /= kLen; ky /= kLen; }
 
     this.facingScale += (this.targetFacingScale - this.facingScale) * Math.min(1, dt * 12);
 
@@ -620,17 +624,75 @@ export class DiveGame {
       } else {
         this.diverAngle *= 0.85;
         this.swimCycle += dt * 1.5;
+        if (this.diverY > 160) this.diverY += Math.sin(now / 650) * 8 * dt;
       }
-
-      this.oxygen -= dt * 0.5;
-      if (this.oxygen <= 0) {
-        this.oxygen = 0;
-        this.triggerDolphinRescue();
-      }
+      if (this.diverY <= 155) this.diverAngle *= 0.8;
     }
 
     this.diverX = Math.max(80, Math.min(this.worldWidth - 80, this.diverX));
     this.diverY = Math.max(140, Math.min(this.worldHeight - 110, this.diverY));
+
+    // Smooth cliff-ledge solid collision (exempt during dolphin rescue so rescue never snags)
+    if (!this.bobo.isRescuing && !this.mountedCreature) {
+      const diverR = 40;
+      for (const cl of this.cliffLedges) {
+        const minX = cl.left ? 0 : this.worldWidth - cl.w * 0.88;
+        const maxX = cl.left ? cl.w * 0.88 : this.worldWidth;
+        const minY = cl.y + 4;
+        const maxY = cl.y + cl.h + 12;
+        const closestX = Math.max(minX, Math.min(maxX, this.diverX));
+        const closestY = Math.max(minY, Math.min(maxY, this.diverY));
+        const cdx = this.diverX - closestX;
+        const cdy = this.diverY - closestY;
+        const distSq = cdx * cdx + cdy * cdy;
+        if (distSq < diverR * diverR) {
+          if (distSq > 0.001) {
+            const dist = Math.sqrt(distSq);
+            const nx = cdx / dist;
+            const ny = cdy / dist;
+            const push = diverR - dist;
+            this.diverX += nx * push;
+            this.diverY += ny * push;
+            const vn = this.diverVx * nx + this.diverVy * ny;
+            if (vn < 0) { this.diverVx -= vn * nx; this.diverVy -= vn * ny; }
+          } else {
+            this.diverX = cl.left ? maxX + diverR : minX - diverR;
+          }
+        }
+      }
+    }
+
+    // Surface O2 refill & depth-adjusted underwater O2 consumption
+    if (!this.bobo.isRescuing) {
+      if (this.diverY <= 175) {
+        if (this.oxygen < this.maxOxygen) {
+          if (!this.wasAtSurface) {
+            this.sound.playBubble();
+            this.addFX(this.diverX, this.diverY - 55, '🌬️ 到達水面！補充新鮮空氣！', '#80DEEA', 26);
+          }
+          this.oxygen = Math.min(this.maxOxygen, this.oxygen + dt * 35);
+          if (this.oxygen >= this.maxOxygen && !this.surfaceFullNotified) {
+            this.surfaceFullNotified = true;
+            this.spawnBurst(this.diverX, this.diverY - 15, '#80DEEA', 8);
+            this.addFX(this.diverX, this.diverY - 75, '✨ 氧氣滿囉！出發探險！', '#69F0AE', 26);
+          }
+        }
+        this.wasAtSurface = true;
+      } else {
+        if (this.diverY > 195) {
+          this.wasAtSurface = false;
+          this.surfaceFullNotified = false;
+        }
+        if (!this.mountedCreature) {
+          const depthRatio = Math.max(0, Math.min(1, (this.diverY - 140) / (this.worldHeight - 250)));
+          this.oxygen -= dt * (0.45 + depthRatio * 0.30);
+          if (this.oxygen <= 0) {
+            this.oxygen = 0;
+            this.triggerDolphinRescue();
+          }
+        }
+      }
+    }
 
     // Camera follow
     const targetCamX = Math.max(0, Math.min(this.worldWidth - this.viewW, this.diverX - this.viewW / 2));
@@ -638,17 +700,26 @@ export class DiveGame {
     this.cameraX += (targetCamX - this.cameraX) * Math.min(1, dt * 5.5);
     this.cameraY += (targetCamY - this.cameraY) * Math.min(1, dt * 5.5);
 
-    // Bobo standby
-    if (this.oxygen / this.maxOxygen < 0.25 && !this.bobo.isRescuing) {
-      this.bobo.active = true;
-      this.bobo.swimPhase += dt * 6;
-      const bdx = this.diverX + 100 - this.bobo.x;
-      const bdy = this.diverY + 50 - this.bobo.y;
-      const bd = Math.hypot(bdx, bdy);
-      if (bd > 60) {
-        this.bobo.x += (bdx / bd) * 220 * dt;
-        this.bobo.y += (bdy / bd) * 220 * dt;
-        this.bobo.facing = bdx > 0 ? 1 : -1;
+    // Bobo standby & gentle swim-off when O2 recovers
+    if (!this.bobo.isRescuing) {
+      if (this.oxygen / this.maxOxygen < 0.25) {
+        this.bobo.active = true;
+        this.bobo.swimPhase += dt * 6;
+        const bdx = this.diverX + 100 - this.bobo.x;
+        const bdy = this.diverY + 50 - this.bobo.y;
+        const bd = Math.hypot(bdx, bdy);
+        if (bd > 60) {
+          this.bobo.x += (bdx / bd) * 220 * dt;
+          this.bobo.y += (bdy / bd) * 220 * dt;
+          this.bobo.facing = bdx > 0 ? 1 : -1;
+        }
+      } else if (this.bobo.active) {
+        this.bobo.swimPhase += dt * 6;
+        this.bobo.x += this.bobo.facing * 260 * dt;
+        this.bobo.y -= 140 * dt;
+        if (this.bobo.y < 110 || Math.abs(this.bobo.x - this.diverX) > 760) {
+          this.bobo.active = false;
+        }
       }
     }
 
@@ -664,10 +735,12 @@ export class DiveGame {
       if (tc.opened && tc.openProgress < 1) tc.openProgress = Math.min(1, tc.openProgress + dt * 2.5);
     }
 
-    // Plankton & bubbles
+    // Plankton & bubbles (keep plankton strictly underwater)
     for (const ms of this.planktonList) {
-      ms.x = (ms.x + ms.vx + this.worldWidth) % this.worldWidth;
-      ms.y = (ms.y + ms.vy + this.worldHeight) % this.worldHeight;
+      ms.x = (ms.x + ms.vx * 60 * dt + this.worldWidth) % this.worldWidth;
+      ms.y += ms.vy * 60 * dt;
+      if (ms.y < 150) ms.y = this.worldHeight - 60;
+      else if (ms.y > this.worldHeight - 60) ms.y = 150;
     }
     for (const b of this.bubbles) {
       b.y -= b.speed * 60 * dt;
@@ -693,11 +766,15 @@ export class DiveGame {
       }
     }
 
-    // Active bubble bullets
+    // Active bubble bullets (dt-scaled, mild water drag, buoyancy rise, pop at surface)
+    const bubbleDrag = Math.pow(0.985, dt * 60);
     this.activeBubbles = this.activeBubbles.filter((bb) => {
       bb.lifeTime -= dt;
-      bb.x += bb.vx;
-      bb.y += bb.vy;
+      bb.vx *= bubbleDrag;
+      bb.vy = bb.vy * bubbleDrag - 55 * dt;
+      bb.x += bb.vx * dt;
+      bb.y += bb.vy * dt;
+      if (bb.y <= 145) return false;
       for (const f of this.fishes) {
         if (!f.isSleeping && Math.hypot(bb.x - f.x, bb.y - f.y) < f.bodyHeight * 0.7 + bb.radius) {
           f.isSleeping = true;
@@ -717,7 +794,7 @@ export class DiveGame {
     for (const f of this.fishes) {
       if (f.isSleeping) {
         f.sleepTimer -= dt;
-        f.y -= 8 * dt;
+        f.y = Math.max(175, f.y - 8 * dt);
         if (f.sleepTimer <= 0) f.isSleeping = false;
         continue;
       }
@@ -752,6 +829,22 @@ export class DiveGame {
         if (f.x < 70) { f.x = 70; f.vx = Math.abs(f.vx); f.facing = 1; }
         else if (f.x > this.worldWidth - 70) { f.x = this.worldWidth - 70; f.vx = -Math.abs(f.vx); f.facing = -1; }
       }
+      // Keep all marine creatures strictly below water surface and above seabed
+      f.y = Math.max(175, Math.min(this.worldHeight - 125, f.y));
+      // Turn away from solid cliff ledges
+      for (const cl of this.cliffLedges) {
+        if (f.y > cl.y - f.bodyHeight * 0.4 && f.y < cl.y + cl.h + f.bodyHeight * 0.4) {
+          if (cl.left && f.x < cl.w * 0.88 + f.bodyWidth * 0.35) {
+            f.x = cl.w * 0.88 + f.bodyWidth * 0.35;
+            f.vx = Math.abs(f.vx);
+            f.facing = 1;
+          } else if (!cl.left && f.x > this.worldWidth - cl.w * 0.88 - f.bodyWidth * 0.35) {
+            f.x = this.worldWidth - cl.w * 0.88 - f.bodyWidth * 0.35;
+            f.vx = -Math.abs(f.vx);
+            f.facing = -1;
+          }
+        }
+      }
 
       if (f.value > 0 && sDist < nearestDist) {
         nearestDist = sDist;
@@ -759,16 +852,33 @@ export class DiveGame {
       }
     }
 
-    // Harpoon
+    // Harpoon (dt-scaled, rebounds at water surface or cliff ledges)
     if (this.harpoonState === 'FIRING') {
-      this.harpoonX += this.harpoonVx;
-      this.harpoonY += this.harpoonVy;
+      this.harpoonX += this.harpoonVx * dt;
+      this.harpoonY += this.harpoonVy * dt;
       this.harpoonDist = Math.hypot(this.harpoonX - this.harpoonStartX, this.harpoonY - this.harpoonStartY);
-      for (const f of this.fishes) {
-        if (Math.hypot(this.harpoonX - f.x, this.harpoonY - f.y) < f.bodyHeight * 0.65) {
-          this.hookedFish = f;
-          this.harpoonState = 'REELING';
-          break;
+      if (this.harpoonY <= 140) {
+        this.harpoonY = 140;
+        this.harpoonState = 'REELING';
+      }
+      if (this.harpoonState === 'FIRING') {
+        for (const cl of this.cliffLedges) {
+          const minX = cl.left ? 0 : this.worldWidth - cl.w * 0.88;
+          const maxX = cl.left ? cl.w * 0.88 : this.worldWidth;
+          if (this.harpoonX >= minX && this.harpoonX <= maxX && this.harpoonY >= cl.y && this.harpoonY <= cl.y + cl.h + 12) {
+            this.spawnBurst(this.harpoonX, this.harpoonY, '#B0BEC5', 5);
+            this.harpoonState = 'REELING';
+            break;
+          }
+        }
+      }
+      if (this.harpoonState === 'FIRING') {
+        for (const f of this.fishes) {
+          if (Math.hypot(this.harpoonX - f.x, this.harpoonY - f.y) < f.bodyHeight * 0.65) {
+            this.hookedFish = f;
+            this.harpoonState = 'REELING';
+            break;
+          }
         }
       }
       if (this.harpoonState === 'FIRING' && this.harpoonDist >= this.state.getHarpoonRange()) {
@@ -794,8 +904,9 @@ export class DiveGame {
         }
         this.harpoonState = 'IDLE';
       } else {
-        this.harpoonX += (dx / d) * 26;
-        this.harpoonY += (dy / d) * 26;
+        const reelStep = Math.min(d, 1560 * dt);
+        this.harpoonX += (dx / d) * reelStep;
+        this.harpoonY += (dy / d) * reelStep;
         if (this.hookedFish) {
           this.hookedFish.x = this.harpoonX;
           this.hookedFish.y = this.harpoonY;
@@ -803,19 +914,20 @@ export class DiveGame {
       }
     }
 
-    // Particles & ripples
+    // Particles & ripples (underwater drag + mild upward buoyancy)
     this.effects = this.effects.filter((fx) => {
       fx.age += dt;
       fx.y += fx.vy * dt;
       fx.alpha = Math.max(0, 1 - fx.age / 1.4);
       return fx.age < 1.4;
     });
+    const pDrag = Math.pow(0.93, dt * 60);
     this.burstParticles = this.burstParticles.filter((p) => {
       p.life -= dt;
+      p.vx *= pDrag;
+      p.vy = p.vy * pDrag - 25 * dt;
       p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vy += 180 * dt;
-      p.vx *= 0.96;
+      p.y = Math.max(145, p.y + p.vy * dt);
       return p.life > 0;
     });
     this.touchRipples = this.touchRipples.filter((tr) => {
@@ -1482,14 +1594,16 @@ export class DiveGame {
     ctx.lineWidth = 4.5;
     ctx.beginPath(); ctx.arc(32, -20, 58, 0, Math.PI * 2); ctx.stroke();
 
-    // 3D Glass Highlight Arc + periodic regulator exhaust bubbles
+    // 3D Glass Highlight Arc + periodic regulator exhaust bubbles (underwater only)
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 3.5;
     ctx.beginPath(); ctx.arc(32, -20, 48, Math.PI * 1.14, Math.PI * 1.46); ctx.stroke();
-    for (let rb = 0; rb < 3; rb++) {
-      const rise = ((now / 22 + rb * 26) % 78);
-      ctx.fillStyle = `rgba(224, 247, 250, ${(0.55 - rise / 150).toFixed(2)})`;
-      ctx.beginPath(); ctx.arc(12 - rb * 4 + Math.sin(rise * 0.12) * 5, -52 - rise, 3.5 - rise * 0.025, 0, Math.PI * 2); ctx.fill();
+    if (this.diverY > 165) {
+      for (let rb = 0; rb < 3; rb++) {
+        const rise = ((now / 22 + rb * 26) % 78);
+        ctx.fillStyle = `rgba(224, 247, 250, ${(0.55 - rise / 150).toFixed(2)})`;
+        ctx.beginPath(); ctx.arc(12 - rb * 4 + Math.sin(rise * 0.12) * 5, -52 - rise, 3.5 - rise * 0.025, 0, Math.PI * 2); ctx.fill();
+      }
     }
 
     // Gloved arm + sculpted Weapon
@@ -1566,7 +1680,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.7', w - 14, h - 12);
+    ctx.fillText('v1.8', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

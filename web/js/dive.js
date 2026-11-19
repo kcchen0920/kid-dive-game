@@ -1148,15 +1148,37 @@ export class DiveGame {
       ctx.fill();
 
       // Belly countershading highlight
-      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillStyle = 'rgba(255,255,255,0.26)';
       ctx.beginPath();
-      ctx.ellipse(hl * 0.08, hh * 0.32, hl * 0.52, hh * 0.36, 0, 0, Math.PI);
+      ctx.ellipse(hl * 0.08, hh * 0.34, hl * 0.54, hh * 0.36, 0, 0, Math.PI);
       ctx.fill();
 
       if (f.species === 'CLOWNFISH') {
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(hl * 0.15, -hh * 0.72, hl * 0.16, hh * 1.44);
-        ctx.fillRect(-hl * 0.32, -hh * 0.65, hl * 0.15, hh * 1.3);
+        // 3 realistic black-edged white bands
+        for (const bx of [hl * 0.32, -hl * 0.05, -hl * 0.42]) {
+          ctx.fillStyle = '#1A1A1A';
+          ctx.fillRect(bx - 2, -hh * 0.72, hl * 0.16 + 4, hh * 1.44);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(bx, -hh * 0.7, hl * 0.16, hh * 1.4);
+        }
+      }
+
+      if (f.species === 'BLUE_TANG') {
+        // Iconic black palette marking
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.ellipse(-hl * 0.08, -hh * 0.15, hl * 0.36, hh * 0.38, -0.15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (f.species === 'GIANT_TUNA') {
+        // Metallic lateral stripe + yellow finlets
+        ctx.strokeStyle = '#E1F5FE'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-hl * 0.6, 0); ctx.lineTo(hl * 0.55, -hh * 0.08); ctx.stroke();
+        ctx.fillStyle = '#FFD600';
+        for (let ft = 0; ft < 4; ft++) {
+          ctx.beginPath(); ctx.arc(-hl * 0.45 - ft * 10, -hh * 0.55 + ft * 4, 3.5, 0, Math.PI * 2); ctx.fill();
+        }
       }
 
       if (f.species === 'ANGLERFISH') {
@@ -1184,22 +1206,37 @@ export class DiveGame {
       }
 
       if (f.species === 'PLESIOSAURUS' || f.species === 'ELASMOSAURUS' || f.species === 'NOTHOSAURUS') {
-        // Long graceful prehistoric neck + paddles
+        // Long graceful S-curved prehistoric neck + banded spots + diamond paddles
         const neckLen = f.species === 'ELASMOSAURUS' ? hl * 0.95 : hl * 0.62;
         ctx.strokeStyle = f.primaryColor; ctx.lineWidth = hh * 0.42; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(hl * 0.5, -hh * 0.1); ctx.quadraticCurveTo(hl * 0.8, -hh * 0.7, hl * 0.6 + neckLen, -hh * 0.55); ctx.stroke();
         ctx.fillStyle = f.primaryColor;
-        ctx.beginPath(); ctx.ellipse(hl * 0.65 + neckLen, -hh * 0.55, 16, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(hl * 0.65 + neckLen, -hh * 0.55, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = f.secondaryColor;
         ctx.beginPath(); ctx.ellipse(hl * 0.15, hh * 0.75, hl * 0.22, hh * 0.45, 0.35, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(-hl * 0.28, hh * 0.7, hl * 0.2, hh * 0.4, -0.3, 0, Math.PI * 2); ctx.fill();
+        // Reptilian dorsal spots
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        for (let s = -2; s <= 1; s++) {
+          ctx.beginPath(); ctx.arc(s * hl * 0.22, -hh * 0.35, 5, 0, Math.PI * 2); ctx.fill();
+        }
       }
 
       if (f.species === 'LIOPLEURODON' || f.species === 'MOSASAURUS') {
-        // Four large marine-reptile paddles
+        // Reptilian dorsal ridge scutes + mottled camo + 4 large paddles
         ctx.fillStyle = f.secondaryColor;
         ctx.beginPath(); ctx.ellipse(hl * 0.2, hh * 0.75, hl * 0.24, hh * 0.42, 0.3, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(-hl * 0.3, hh * 0.7, hl * 0.2, hh * 0.36, -0.25, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        for (let sc = -3; sc <= 2; sc++) {
+          ctx.beginPath(); ctx.arc(sc * hl * 0.2, -hh * 0.82, 5.5, Math.PI, 0); ctx.fill();
+        }
+      }
+
+      if (f.species === 'ICHTHYOSAURUS') {
+        // Sleek lateral countershading stripe
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-hl * 0.55, 0); ctx.lineTo(hl * 0.6, -hh * 0.12); ctx.stroke();
       }
     }
 
@@ -1353,7 +1390,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.2', w - 14, h - 12);
+    ctx.fillText('v1.3', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

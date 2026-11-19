@@ -1122,23 +1122,35 @@ export class DiveGame {
       ctx.fillStyle = '#FF8A80';
       ctx.beginPath(); ctx.arc(hl * 0.55, hh * 0.1, 4, 0, Math.PI * 2); ctx.fill();
     } else {
-      // Anatomical Bézier hull + dorsal/pectoral fins + countershading
-      ctx.fillStyle = f.secondaryColor;
-      // Swept dorsal fin
-      ctx.beginPath();
-      ctx.moveTo(-hl * 0.15, -hh * 0.82);
-      ctx.quadraticCurveTo(-hl * 0.35, -hh * 1.45, -hl * 0.52, -hh * 0.72);
-      ctx.closePath();
-      ctx.fill();
-      // Crescent tail fin
-      ctx.beginPath();
-      ctx.moveTo(-hl * 0.68, 0);
-      ctx.quadraticCurveTo(-hl * 0.95, -hh * 0.5, -hl * 1.18 + tail, -hh * 0.85);
-      ctx.quadraticCurveTo(-hl * 0.92 + tail * 0.4, 0, -hl * 1.18 + tail, hh * 0.85);
-      ctx.quadraticCurveTo(-hl * 0.95, hh * 0.5, -hl * 0.68, 0);
-      ctx.fill();
+      const isLongNeck = f.species === 'PLESIOSAURUS' || f.species === 'ELASMOSAURUS' || f.species === 'NOTHOSAURUS';
+      const isDino = isLongNeck || f.species === 'LIOPLEURODON' || f.species === 'MOSASAURUS' || f.species === 'ICHTHYOSAURUS';
 
-      // Main streamlined body
+      ctx.fillStyle = f.secondaryColor;
+      if (!isDino || f.species === 'ICHTHYOSAURUS') {
+        // Swept dorsal fin & crescent tail fin (fish & ichthyosaur)
+        ctx.beginPath();
+        ctx.moveTo(-hl * 0.15, -hh * 0.82);
+        ctx.quadraticCurveTo(-hl * 0.35, -hh * 1.45, -hl * 0.52, -hh * 0.72);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-hl * 0.68, 0);
+        ctx.quadraticCurveTo(-hl * 0.95, -hh * 0.5, -hl * 1.18 + tail, -hh * 0.85);
+        ctx.quadraticCurveTo(-hl * 0.92 + tail * 0.4, 0, -hl * 1.18 + tail, hh * 0.85);
+        ctx.quadraticCurveTo(-hl * 0.95, hh * 0.5, -hl * 0.68, 0);
+        ctx.fill();
+      } else {
+        // Long tapering reptilian tail for marine dinosaurs
+        ctx.fillStyle = f.primaryColor;
+        ctx.beginPath();
+        ctx.moveTo(-hl * 0.62, -hh * 0.25);
+        ctx.quadraticCurveTo(-hl * 1.05, tail * 0.4, -hl * 1.38, tail);
+        ctx.quadraticCurveTo(-hl * 1.0, hh * 0.28, -hl * 0.62, hh * 0.25);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Main streamlined body with crisp outline
       ctx.fillStyle = f.primaryColor;
       ctx.beginPath();
       ctx.moveTo(hl * 0.88, 0);
@@ -1146,6 +1158,9 @@ export class DiveGame {
       ctx.bezierCurveTo(-hl * 0.45, hh * 0.95, hl * 0.55, hh * 1.05, hl * 0.88, 0);
       ctx.closePath();
       ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
 
       // Belly countershading highlight
       ctx.fillStyle = 'rgba(255,255,255,0.26)';
@@ -1390,7 +1405,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.3', w - 14, h - 12);
+    ctx.fillText('v1.4', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

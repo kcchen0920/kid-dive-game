@@ -1170,6 +1170,13 @@ export class DiveGame {
   }
 
   renderHUD(ctx, w, h, now, depthMeters) {
+    // Version badge (bottom-right)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('v1.0', w - 14, h - 12);
+    ctx.textAlign = 'left';
+
     if (this.hurtFlashTimer > 0) {
       ctx.fillStyle = 'rgba(255,171,64,0.18)';
       ctx.fillRect(0, 0, w, h);

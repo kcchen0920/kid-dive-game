@@ -99,13 +99,32 @@ public class DiverGameView extends View {
 
     // Pad / Touch Virtual Joystick & On-Screen Action Buttons
     private int joystickPointerId = -1;
+    private int actionPointerId = -1;
     private float joystickOriginX = 0f;
     private float joystickOriginY = 0f;
     private float joystickKnobX = 0f;
     private float joystickKnobY = 0f;
     private boolean isTouchJoystickActive = false;
     private boolean isTouchActionPressed = false;
+    private boolean autoSurfaceActive = false;
     private static final float JOYSTICK_RADIUS = 95f;
+
+    // v2.0 Fixed-Timestep & Underwater Fluid State
+    private float accumulator = 0f;
+    private float simTime = 0f;
+    private float mountGraceTimer = 0f;
+    private boolean wasAtSurface = false;
+    private boolean surfaceFullNotified = false;
+    private boolean wasAboveSurface = false;
+    private float splashCooldown = 0f;
+    private float whaleSpoutTimer = 0f;
+    private float harpoonRopeAmp = 0f;
+
+    // Cached Shaders for Zero-Allocation onDraw
+    private Shader cachedRayShader = null;
+    private Shader cachedHeadlampShader = null;
+    private float cachedHeadlampRadius = -1f;
+    private int cachedHeadlampLevel = -1;
 
     // Weapons: 1. Harpoon 2. Bubble Stun Gun
     public enum WeaponMode { HARPOON, BUBBLE_GUN }
@@ -142,7 +161,7 @@ public class DiverGameView extends View {
     // Bubble Stun Projectile
     private static class BubbleBullet {
         float x, y, vx, vy, radius;
-        float lifeTime;
+        float lifeTime, age;
     }
     private final List<BubbleBullet> activeBubbles = new ArrayList<>();
 
@@ -592,19 +611,23 @@ public class DiverGameView extends View {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 inputX = -1.0f;
                 targetFacingScale = -1.0f;
+                autoSurfaceActive = false;
                 lastInputTime = now;
                 return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 inputX = 1.0f;
                 targetFacingScale = 1.0f;
+                autoSurfaceActive = false;
                 lastInputTime = now;
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
                 inputY = -1.0f;
+                autoSurfaceActive = false;
                 lastInputTime = now;
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 inputY = 1.0f;
+                autoSurfaceActive = false;
                 lastInputTime = now;
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
@@ -614,7 +637,7 @@ public class DiverGameView extends View {
                     isActionKeyDown = true;
                     actionKeyDownTime = now;
                     actionLongPressTriggered = false;
-                    postDelayed(longPressWeaponSwitchRunnable, 380);
+                    postDelayed(longPressWeaponSwitchRunnable, 550);
                 }
                 return true;
             // Dedicated button triggers for TV Remote & Gamepads:
@@ -701,7 +724,7 @@ public class DiverGameView extends View {
                     return true;
                 }
 
-                // 3. Bottom-Right Weapon Switch Circle
+                // 3. Bottom-Right Weapon Switch Circle & One-Tap Surface Ascent Bubble
                 float swCx = w - 260f;
                 float swCy = h - 105f;
                 if (Math.hypot(tx - swCx, ty - swCy) <= 56f) {
@@ -709,23 +732,42 @@ public class DiverGameView extends View {
                     return true;
                 }
 
-                // 4. Bottom-Right Big Action Circle (or tapping right half of screen)
                 float actCx = w - 125f;
                 float actCy = h - 135f;
-                if (Math.hypot(tx - actCx, ty - actCy) <= 84f || tx >= w * 0.55f) {
+                float oxPctTouch = oxygen / Math.max(1f, maxOxygen);
+                float depthMTouch = Math.max(0f, (diverY - 140f) / 10f);
+                if ((oxPctTouch < 0.30f || depthMTouch > 120f) && !bobo.isRescuing) {
+                    float upCx = actCx;
+                    float upCy = actCy - 126f;
+                    if (Math.hypot(tx - upCx, ty - upCy) <= 52f) {
+                        if (oxPctTouch < 0.25f) {
+                            triggerDolphinRescue();
+                        } else {
+                            autoSurfaceActive = !autoSurfaceActive;
+                            SoundManager.get(getContext()).playBubble();
+                            addFX(diverX, diverY - 55f, autoSurfaceActive ? "⬆️⛵ 自動上浮中！" : "✋ 已取消上浮", 0xFF80DEEA, 26f);
+                        }
+                        return true;
+                    }
+                }
+
+                // 4. Bottom-Right Big Action Circle (1.45x generous hit radius + 16px right palm guard)
+                if (tx <= w - 16f && Math.hypot(tx - actCx, ty - actCy) <= 104f) {
+                    actionPointerId = pointerId;
                     isTouchActionPressed = true;
                     onActionPressed();
                     return true;
                 }
 
-                // 5. Left Half of Screen -> Virtual Floating Joystick
-                if (joystickPointerId == -1) {
+                // 5. Left Dynamic Follow-Origin Floating Joystick (clamped inside safe bounds)
+                if (joystickPointerId == -1 && tx < w * 0.62f) {
                     joystickPointerId = pointerId;
                     isTouchJoystickActive = true;
-                    joystickOriginX = tx;
-                    joystickOriginY = ty;
-                    joystickKnobX = tx;
-                    joystickKnobY = ty;
+                    autoSurfaceActive = false;
+                    joystickOriginX = Math.max(JOYSTICK_RADIUS + 18f, Math.min(w * 0.48f, tx));
+                    joystickOriginY = Math.max(h * 0.24f, Math.min(h - JOYSTICK_RADIUS - 18f, ty));
+                    joystickKnobX = joystickOriginX;
+                    joystickKnobY = joystickOriginY;
                     lastInputTime = SystemClock.uptimeMillis();
                 }
                 return true;
@@ -740,6 +782,14 @@ public class DiverGameView extends View {
                         float dx = mx - joystickOriginX;
                         float dy = my - joystickOriginY;
                         float dist = (float) Math.hypot(dx, dy);
+                        if (dist > JOYSTICK_RADIUS * 1.15f) {
+                            float pull = (dist - JOYSTICK_RADIUS * 1.15f) * 0.65f;
+                            joystickOriginX = Math.max(JOYSTICK_RADIUS + 18f, Math.min(w * 0.50f, joystickOriginX + (dx / dist) * pull));
+                            joystickOriginY = Math.max(h * 0.22f, Math.min(h - JOYSTICK_RADIUS - 18f, joystickOriginY + (dy / dist) * pull));
+                            dx = mx - joystickOriginX;
+                            dy = my - joystickOriginY;
+                            dist = (float) Math.hypot(dx, dy);
+                        }
                         if (dist > JOYSTICK_RADIUS) {
                             dx = (dx / dist) * JOYSTICK_RADIUS;
                             dy = (dy / dist) * JOYSTICK_RADIUS;
@@ -747,10 +797,15 @@ public class DiverGameView extends View {
                         joystickKnobX = joystickOriginX + dx;
                         joystickKnobY = joystickOriginY + dy;
 
-                        inputX = dx / JOYSTICK_RADIUS;
-                        inputY = dy / JOYSTICK_RADIUS;
-                        if (Math.abs(inputX) > 0.12f) {
-                            targetFacingScale = (inputX > 0f) ? 1.0f : -1.0f;
+                        if (dist / JOYSTICK_RADIUS < 0.14f) {
+                            inputX = 0f;
+                            inputY = 0f;
+                        } else {
+                            inputX = dx / JOYSTICK_RADIUS;
+                            inputY = dy / JOYSTICK_RADIUS;
+                            if (Math.abs(inputX) > 0.14f) {
+                                targetFacingScale = (inputX > 0f) ? 1.0f : -1.0f;
+                            }
                         }
                         lastInputTime = SystemClock.uptimeMillis();
                     }
@@ -761,7 +816,10 @@ public class DiverGameView extends View {
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_POINTER_UP:
             case MotionEvent.ACTION_CANCEL: {
-                isTouchActionPressed = false;
+                if (action == MotionEvent.ACTION_CANCEL || pointerId == actionPointerId) {
+                    actionPointerId = -1;
+                    isTouchActionPressed = false;
+                }
                 if (action == MotionEvent.ACTION_CANCEL || pointerId == joystickPointerId) {
                     joystickPointerId = -1;
                     isTouchJoystickActive = false;
@@ -787,11 +845,12 @@ public class DiverGameView extends View {
     }
 
     private void onActionPressed() {
-        // Proposal A: If already mounted, pressing OK dismounts peacefully!
+        // Proposal A: If already mounted, pressing OK dismounts peacefully (with 0.65s anti-mistap grace)
         if (mountedCreature != null) {
+            if (mountGraceTimer > 0f) return;
             mountedCreature = null;
             SoundManager.get(getContext()).playBubble();
-            addFX(diverX, diverY - 45f, "🌟 平安下騎！感謝海洋夥伴的護送！", 0xFF00E676, 32f);
+            addFX(diverX, diverY - 45f, "🌟 平安下騎！", 0xFF00E676, 32f);
             return;
         }
 
@@ -805,14 +864,18 @@ public class DiverGameView extends View {
         for (RealisticFish f : fishes) {
             if (f.species == RealisticFish.Species.TURTLE && Math.hypot(diverX - f.x, diverY - f.y) < 130f) {
                 mountedCreature = f;
+                mountGraceTimer = 0.65f;
+                autoSurfaceActive = false;
                 SoundManager.get(getContext()).playUpgrade();
-                addFX(diverX, diverY - 50f, "🐢 騎乘海龜奔奔！免耗氧氣悠游珊瑚區！(再次按 OK 下騎)", 0xFF2E7D32, 34f);
+                addFX(diverX, diverY - 50f, "🐢 騎乘海龜奔奔！", 0xFF2E7D32, 34f);
                 return;
             }
             if (f.species == RealisticFish.Species.BLUE_WHALE && Math.hypot(diverX - f.x, diverY - f.y) < 180f) {
                 mountedCreature = f;
+                mountGraceTimer = 0.65f;
+                autoSurfaceActive = false;
                 SoundManager.get(getContext()).playDolphin();
-                addFX(diverX, diverY - 55f, "🐋 騎乘深海巨型藍鯨！彩虹噴水高速下潛！(再次按 OK 下騎)", 0xFF0288D1, 36f);
+                addFX(diverX, diverY - 55f, "🐋 騎乘深海藍鯨！", 0xFF0288D1, 36f);
                 return;
             }
         }
@@ -892,17 +955,18 @@ public class DiverGameView extends View {
 
         float targetAngle;
         if (targetFish != null) {
-            targetAngle = (float) Math.atan2(targetFish.y - harpoonStartY, targetFish.x - harpoonStartX);
+            float tx = targetFish.x - harpoonStartX;
+            if (Math.abs(tx) > 10f) targetFacingScale = tx > 0f ? 1f : -1f;
+            targetAngle = (float) Math.atan2(targetFish.y - harpoonStartY, tx);
         } else {
             targetAngle = facingRight ? diverAngle : (float) Math.PI - diverAngle;
         }
 
-        float speed = 32f;
+        float speed = 1680f;
         harpoonVx = (float) Math.cos(targetAngle) * speed;
         harpoonVy = (float) Math.sin(targetAngle) * speed;
 
         SoundManager.get(getContext()).playHarpoon();
-        addFX(harpoonStartX, harpoonStartY, "💨 魚叉發射！", 0xFFFFD700, 24f);
     }
 
     private void fireBubbleGun() {
@@ -912,7 +976,9 @@ public class DiverGameView extends View {
 
         float targetAngle;
         if (targetFish != null) {
-            targetAngle = (float) Math.atan2(targetFish.y - startY, targetFish.x - startX);
+            float tx = targetFish.x - startX;
+            if (Math.abs(tx) > 10f) targetFacingScale = tx > 0f ? 1f : -1f;
+            targetAngle = (float) Math.atan2(targetFish.y - startY, tx);
         } else {
             targetAngle = facingRight ? diverAngle : (float) Math.PI - diverAngle;
         }
@@ -920,15 +986,15 @@ public class DiverGameView extends View {
         BubbleBullet bb = new BubbleBullet();
         bb.x = startX;
         bb.y = startY;
-        float speed = 25f;
+        float speed = 960f;
         bb.vx = (float) Math.cos(targetAngle) * speed;
         bb.vy = (float) Math.sin(targetAngle) * speed;
-        bb.radius = 22f;
-        bb.lifeTime = 1.6f;
+        bb.radius = 18f;
+        bb.lifeTime = 2.0f;
+        bb.age = 0f;
         activeBubbles.add(bb);
 
         SoundManager.get(getContext()).playBubbleGun();
-        addFX(startX, startY, "🫧 七彩催眠氣泡！", 0xFF00E5FF, 26f);
     }
 
     private void triggerDolphinRescue() {
@@ -948,10 +1014,17 @@ public class DiverGameView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         long now = SystemClock.uptimeMillis();
-        float dt = Math.min((now - lastFrameTime) / 1000f, 0.05f);
+        float rawDt = Math.min((now - lastFrameTime) / 1000f, 0.05f);
         lastFrameTime = now;
 
-        updatePhysics(dt, now);
+        // v2.0 Fixed-Timestep Accumulator (capped at 3 steps to prevent spiral of death)
+        final float FIXED_DT = 1f / 60f;
+        accumulator = Math.min(accumulator + rawDt, FIXED_DT * 3f);
+        while (accumulator >= FIXED_DT) {
+            simTime += FIXED_DT;
+            updatePhysics(FIXED_DT, now);
+            accumulator -= FIXED_DT;
+        }
         renderScene(canvas, now);
 
         if (isRunning) {
@@ -964,6 +1037,9 @@ public class DiverGameView extends View {
         screenShakeTimer = Math.max(0f, screenShakeTimer - dt);
         hurtFlashTimer = Math.max(0f, hurtFlashTimer - dt);
         avatarCelebrateTimer = Math.max(0f, avatarCelebrateTimer - dt);
+        mountGraceTimer = Math.max(0f, mountGraceTimer - dt);
+        splashCooldown = Math.max(0f, splashCooldown - dt);
+        harpoonRopeAmp = Math.max(0f, harpoonRopeAmp - dt * 28f);
 
         Iterator<TouchRipple> trIt = touchRipples.iterator();
         while (trIt.hasNext()) {
@@ -974,15 +1050,25 @@ public class DiverGameView extends View {
             }
         }
 
-        // Smooth horizontal facing interpolation
-        facingScale += (targetFacingScale - facingScale) * Math.min(1f, dt * 12f);
+        // Smooth horizontal facing interpolation (dt-independent)
+        facingScale += (targetFacingScale - facingScale) * (1f - (float) Math.exp(-12f * dt));
 
-        // Remote Watchdog (skip timeout while finger is holding virtual joystick)
+        // Remote Watchdog (650ms for smooth TV remote hold)
         if (isTouchJoystickActive) {
             lastInputTime = now;
-        } else if (now - lastInputTime > 220) {
+        } else if (now - lastInputTime > 650L) {
             inputX = 0f;
             inputY = 0f;
+        }
+
+        float effInputX = inputX;
+        float effInputY = inputY;
+        if (autoSurfaceActive && mountedCreature == null && !bobo.isRescuing) {
+            if (effInputX != 0f || effInputY != 0f || diverY <= 165f) {
+                autoSurfaceActive = false;
+            } else {
+                effInputY = -1f;
+            }
         }
 
         // Proposal A: Mounted on Turtle or Blue Whale
@@ -993,8 +1079,12 @@ public class DiverGameView extends View {
             facingScale = mountedCreature.facing;
 
             if (mountedCreature.species == RealisticFish.Species.BLUE_WHALE) {
-                if (random.nextInt(12) == 0) {
-                    addFX(mountedCreature.x, mountedCreature.y - 65f, "🌈 呼咻~！", 0xFF00E5FF, 26f);
+                whaleSpoutTimer += dt;
+                if (whaleSpoutTimer >= 2.0f) {
+                    whaleSpoutTimer = 0f;
+                    if (burstParticles.size() < 56) {
+                        spawnBurst(mountedCreature.x + mountedCreature.facing * 48f, mountedCreature.y - 68f, 0xFF80DEEA, 8);
+                    }
                 }
             }
             // Dave rests and breathes freely: NO oxygen consumption!
@@ -1007,14 +1097,12 @@ public class DiverGameView extends View {
                 bobo.x += (ddx / dist) * 550f * dt;
                 bobo.y += (ddy / dist) * 550f * dt;
             } else {
-                // Locked together: Ascend to surface!
                 bobo.y -= 700f * dt;
                 diverX = bobo.x;
                 diverY = bobo.y - 30f;
                 diverAngle = -0.3f;
 
-                // Jet bubbles behind dolphin
-                if (random.nextInt(3) == 0) {
+                if (random.nextInt(3) == 0 && bubbles.size() < 96) {
                     Bubble b = new Bubble();
                     b.x = bobo.x + (random.nextFloat() - 0.5f) * 20f;
                     b.y = bobo.y + 40f;
@@ -1025,78 +1113,141 @@ public class DiverGameView extends View {
                 }
 
                 if (diverY <= 150f) {
-                    // Safe at Cobra Boat!
                     bobo.isRescuing = false;
                     bobo.active = false;
                     state.coins += 50;
                     state.save();
                     SoundManager.get(getContext()).playUpgrade();
-                    addFX(diverX, diverY, "🎉 平安抵達水面！獲得海豚守護獎勵 +50 貝殼金幣！", 0xFF00E676, 36f);
                     if (listener != null) listener.onCoinsUpdated(state.coins);
                     surfaceAndReturn();
                     return;
                 }
             }
         } else {
-            // Controlled swimming
+            // v2.0 Underwater Fluid Dynamics: Anisotropic drag, depth buoyancy, hydrothermal vents & surface breaching
             float maxSpeed = 230f + (state.speedLevel - 1) * 35f;
-            float targetVx = inputX * maxSpeed;
-            float targetVy = inputY * maxSpeed;
+            boolean isMoving = (effInputX != 0f || effInputY != 0f);
 
-            boolean isMoving = (inputX != 0f || inputY != 0f);
-            float accelRate = isMoving ? 8.0f : 5.0f;
-            diverVx += (targetVx - diverVx) * Math.min(1f, dt * accelRate);
-            diverVy += (targetVy - diverVy) * Math.min(1f, dt * accelRate);
+            if (diverY < 140f) {
+                diverVy += 520f * dt;
+                diverVx *= (float) Math.exp(-0.8f * dt);
+                wasAboveSurface = true;
+            } else {
+                float fx = (float) Math.cos(diverAngle) * (facingScale >= 0f ? 1f : -1f);
+                float fy = (float) Math.sin(diverAngle);
+                float nx = -fy;
+                float ny = fx;
+                float vPar = (diverVx * fx + diverVy * fy) * (float) Math.exp(-2.4f * dt);
+                float vPerp = (diverVx * nx + diverVy * ny) * (float) Math.exp(-5.8f * dt);
+                diverVx = vPar * fx + vPerp * nx + effInputX * maxSpeed * 2.8f * dt;
+                diverVy = vPar * fy + vPerp * ny + effInputY * maxSpeed * 2.8f * dt;
+
+                if (diverY < 600f) diverVy -= 14f * dt;
+                else if (diverY > 2800f) diverVy += 10f * dt;
+                else if (!isMoving) diverVy += (float) Math.sin(simTime * 2.2f) * 10f * dt;
+
+                // Hydrothermal Vent Bubble Elevator updrafts
+                if (diverY > worldHeight - 520f) {
+                    for (float vx = 420f; vx < worldWidth - 300f; vx += 680f) {
+                        float dxv = Math.abs(diverX - vx);
+                        if (dxv < 55f) {
+                            diverVy = Math.max(-340f, diverVy - 420f * (1f - dxv / 55f) * dt);
+                        }
+                    }
+                }
+
+                float spd = (float) Math.hypot(diverVx, diverVy);
+                if (spd > maxSpeed * 1.35f) {
+                    float s = (maxSpeed * 1.35f) / spd;
+                    diverVx *= s;
+                    diverVy *= s;
+                }
+
+                if (wasAboveSurface && diverVy > 110f && splashCooldown <= 0f) {
+                    diverVy *= 0.45f;
+                    splashCooldown = 0.4f;
+                    SoundManager.get(getContext()).playBubble();
+                    if (burstParticles.size() < 56) spawnBurst(diverX, 144f, 0xFFE0F7FA, 8);
+                }
+                wasAboveSurface = false;
+            }
 
             diverX += diverVx * dt;
             diverY += diverVy * dt;
 
+            float speedRatio = Math.min(1.2f, (float) Math.hypot(diverVx, diverVy) / Math.max(1f, maxSpeed));
+            swimCycle += dt * (1.8f + speedRatio * 8.2f);
+            float maxPitch = (float) Math.toRadians(52.0);
             if (isMoving) {
-                swimCycle += dt * 8.5f;
-                float targetAngle = (float) Math.atan2(diverVy, Math.abs(diverVx));
-                diverAngle += (targetAngle - diverAngle) * 0.18f;
+                float rawAng = (float) Math.atan2(diverVy, Math.max(40f, Math.abs(diverVx)));
+                float targetAngle = Math.max(-maxPitch, Math.min(maxPitch, rawAng));
+                diverAngle += (targetAngle - diverAngle) * (1f - (float) Math.exp(-10f * dt));
             } else {
-                diverAngle *= 0.85f;
-                swimCycle += dt * 1.5f;
+                diverAngle *= (float) Math.exp(-8f * dt);
             }
+            if (diverY <= 155f) diverAngle *= (float) Math.exp(-10f * dt);
 
-            // Oxygen consumption
-            oxygen -= dt * 0.5f;
-            if (oxygen <= 0) {
-                oxygen = 0;
-                // Auto trigger dolphin rescue instead of game over!
-                triggerDolphinRescue();
+            // Surface O2 refill (synced with Web!) & depth-adjusted O2 consumption
+            if (diverY <= 175f) {
+                if (oxygen < maxOxygen) {
+                    if (!wasAtSurface) {
+                        SoundManager.get(getContext()).playBubble();
+                        addFX(diverX, diverY - 55f, "🌬️ 補充新鮮空氣！", 0xFF80DEEA, 28f);
+                    }
+                    oxygen = Math.min(maxOxygen, oxygen + dt * 35f);
+                    if (oxygen >= maxOxygen && !surfaceFullNotified) {
+                        surfaceFullNotified = true;
+                        if (burstParticles.size() < 56) spawnBurst(diverX, diverY - 15f, 0xFF80DEEA, 8);
+                        addFX(diverX, diverY - 75f, "✨ 氧氣滿囉！", 0xFF69F0AE, 28f);
+                    }
+                }
+                wasAtSurface = true;
+            } else {
+                if (diverY > 195f) {
+                    wasAtSurface = false;
+                    surfaceFullNotified = false;
+                }
+                float depthRatio = Math.max(0f, Math.min(1f, (diverY - 140f) / (worldHeight - 250f)));
+                oxygen -= dt * (0.45f + depthRatio * 0.30f);
+                if (oxygen <= 0f) {
+                    oxygen = 0f;
+                    triggerDolphinRescue();
+                }
             }
         }
 
-        // Breathing bubbles
-        breathTimer += dt;
-        if (breathTimer > 2.6f) {
-            breathTimer = 0f;
-            for (int k = 0; k < 3; k++) {
-                Bubble b = new Bubble();
-                b.x = diverX + (targetFacingScale > 0 ? 30f : -30f) + (random.nextFloat() - 0.5f) * 12f;
-                b.y = diverY - 12f;
-                b.r = 4f + random.nextFloat() * 6f;
-                b.speed = 2.2f + random.nextFloat() * 1.5f;
-                b.isDaveBreath = true;
-                bubbles.add(b);
+        // Rhythmic world-space regulator breathing bubbles (capped <= 96)
+        if (diverY > 165f && !bobo.isRescuing) {
+            float bInterval = (oxygen / Math.max(1f, maxOxygen) < 0.25f) ? 0.85f : 1.4f;
+            breathTimer += dt;
+            if (breathTimer >= bInterval) {
+                breathTimer = 0f;
+                for (int k = 0; k < 3 && bubbles.size() < 96; k++) {
+                    Bubble b = new Bubble();
+                    b.x = diverX + (facingScale >= 0f ? 34f : -34f) + (random.nextFloat() - 0.5f) * 10f;
+                    b.y = diverY - 6f - k * 4f;
+                    b.r = 5.5f - k * 1.1f;
+                    b.speed = 1.9f + random.nextFloat() * 0.8f;
+                    b.isDaveBreath = true;
+                    bubbles.add(b);
+                }
             }
         }
 
-        // Clamp boundaries
+        // Clamp boundaries (allow surface breach up to 105f)
         if (diverX < 80f) diverX = 80f;
         if (diverX > worldWidth - 80f) diverX = worldWidth - 80f;
-        if (diverY < 140f) diverY = 140f;
+        if (diverY < 105f) diverY = 105f;
         if (diverY > worldHeight - 110f) diverY = worldHeight - 110f;
 
-        // Camera follow
+        // Camera follow (strictly >= 0)
         float targetCamX = diverX - getWidth() / 2f;
         float targetCamY = diverY - getHeight() / 2f;
-        targetCamX = Math.max(0, Math.min(worldWidth - getWidth(), targetCamX));
-        targetCamY = Math.max(0, Math.min(worldHeight - getHeight(), targetCamY));
-        cameraX += (targetCamX - cameraX) * Math.min(1f, dt * 5.5f);
-        cameraY += (targetCamY - cameraY) * Math.min(1f, dt * 5.5f);
+        targetCamX = Math.max(0f, Math.min(worldWidth - getWidth(), targetCamX));
+        targetCamY = Math.max(0f, Math.min(worldHeight - getHeight(), targetCamY));
+        float camLerp = 1f - (float) Math.exp(-5.5f * dt);
+        cameraX += (targetCamX - cameraX) * camLerp;
+        cameraY += (targetCamY - cameraY) * camLerp;
 
         // Sequence 3: Friendly Dolphin Bobo AI
         float oxPercent = oxygen / maxOxygen;
@@ -1139,13 +1290,13 @@ public class DiverGameView extends View {
             }
         }
 
-        // Marine Snow drifting
+        // Marine Snow drifting (dt-scaled, underwater only)
         for (MarineSnow ms : planktonList) {
-            ms.x += ms.speedX;
-            ms.y += ms.speedY;
-            if (ms.y < 0) ms.y = worldHeight;
-            if (ms.x < 0) ms.x = worldWidth;
-            if (ms.x > worldWidth) ms.x = 0;
+            ms.x += ms.speedX * 60f * dt;
+            ms.y += ms.speedY * 60f * dt;
+            if (ms.y < 150f) ms.y = worldHeight - 60f;
+            if (ms.x < 0f) ms.x = worldWidth;
+            if (ms.x > worldWidth) ms.x = 0f;
         }
 
         // Ambient Bubbles
@@ -1165,40 +1316,52 @@ public class DiverGameView extends View {
                 float oxDx = diverX - b.x;
                 float oxDy = diverY - b.y;
                 float oxDist = (float) Math.hypot(oxDx, oxDy);
-                // Gentle magnet pull for 4-year-old kids
-                if (oxDist > 1f && oxDist < 140f) {
-                    b.x += (oxDx / oxDist) * 190f * dt;
-                    b.y += (oxDy / oxDist) * 190f * dt;
+                // Inverse-distance accelerated magnet pull
+                if (oxDist > 1f && oxDist < 160f) {
+                    float pull = 420f * (1f - oxDist / 160f) + 120f;
+                    b.x += (oxDx / oxDist) * pull * dt;
+                    b.y += (oxDy / oxDist) * pull * dt;
                 }
                 if (oxDist < (b.r + 52f)) {
                     oxygen = Math.min(maxOxygen, oxygen + 25f);
                     SoundManager.get(getContext()).playBubble();
-                    spawnBurst(b.x, b.y, 0xFF00E5FF, 10);
+                    if (burstParticles.size() < 56) spawnBurst(b.x, b.y, 0xFF00E5FF, 10);
                     addFX(b.x, b.y, "🫧 +25 氧氣！", 0xFF00FFFF, 26f);
                     b.y = worldHeight - 50f;
                 }
             }
         }
 
-        // Sequence 3: Active Bubble Bullets update
+        // Sequence 3: Active Bubble Bullets update (dt-scaled, water drag, sinusoidal sway, inflation, surface pop)
+        float bbDrag = (float) Math.pow(0.985, dt * 60f);
         Iterator<BubbleBullet> bbIt = activeBubbles.iterator();
         while (bbIt.hasNext()) {
             BubbleBullet bb = bbIt.next();
             bb.lifeTime -= dt;
-            bb.x += bb.vx;
-            bb.y += bb.vy;
+            bb.age += dt;
+            bb.vx *= bbDrag;
+            bb.vy = bb.vy * bbDrag - 55f * dt;
+            bb.radius = Math.min(30f, bb.radius + 3.5f * dt);
+            bb.x += (bb.vx + (float) Math.sin(bb.age * 12f) * 35f) * dt;
+            bb.y += bb.vy * dt;
 
-            // Collision with fish: Envelop in sleep bubble!
+            if (bb.y <= 145f) {
+                bbIt.remove();
+                continue;
+            }
+
             boolean hit = false;
             for (RealisticFish f : fishes) {
                 if (!f.isSleeping && Math.hypot(bb.x - f.x, bb.y - f.y) < (f.bodyHeight * 0.7f + bb.radius)) {
                     f.isSleeping = true;
                     f.sleepTimer = 8.0f;
                     f.isAttacking = false;
-                    f.bubbleEncloseRadius = Math.max(f.length, f.bodyHeight) * 0.8f;
+                    f.telegraphTimer = 0f;
+                    f.chargeTimer = 0f;
+                    f.bubbleEncloseRadius = Math.max(f.length, f.bodyHeight) * 0.68f;
                     hit = true;
                     SoundManager.get(getContext()).playBubble();
-                    addFX(f.x, f.y - 45f, "💤 氣泡催眠成功！(游近按 OK 溫柔活捉)", 0xFF00E5FF, 32f);
+                    addFX(f.x, f.y - 45f, "💤 💖", 0xFF00E5FF, 30f);
                     break;
                 }
             }
@@ -1208,18 +1371,19 @@ public class DiverGameView extends View {
             }
         }
 
-        // Realistic Fish AI
+        // Realistic Fish AI & Wide-Cone Sticky Auto-Aim (18% hysteresis)
+        RealisticFish prevTarget = targetFish;
         targetFish = null;
-        float nearestDist = state.getHarpoonRange();
+        float maxAimRange = state.getHarpoonRange();
+        float bestScore = maxAimRange;
+        boolean whaleRiding = (mountedCreature != null && mountedCreature.species == RealisticFish.Species.BLUE_WHALE);
 
         for (RealisticFish f : fishes) {
-            // Sequence 3: Sleeping state
             if (f.isSleeping) {
                 f.sleepTimer -= dt;
-                f.y -= 8f * dt; // Gently float upward inside protective bubble
+                f.y = Math.max(175f, f.y - 8f * dt);
                 if (f.sleepTimer <= 0f) {
                     f.isSleeping = false;
-                    addFX(f.x, f.y - 30f, "☀️ 睡醒游走啦~", 0xFFFFD700, 22f);
                 }
                 continue;
             }
@@ -1232,88 +1396,74 @@ public class DiverGameView extends View {
             if (f.cooldownTimer > 0f) f.cooldownTimer = Math.max(0f, f.cooldownTimer - dt);
             if (f.chompTimer > 0f) f.chompTimer = Math.max(0f, f.chompTimer - dt);
 
-            if (isDunk && !bobo.isRescuing && mountedCreature == null && f.cooldownTimer <= 0f) {
+            if ((isSharkPredator || isDunk) && whaleRiding && sDist < 260f && sDist > 1f) {
+                f.isAttacking = false;
+                f.telegraphTimer = 0f;
+                f.chargeTimer = 0f;
+                f.x -= (sdx / sDist) * 140f * dt;
+                f.y -= (sdy / sDist) * 90f * dt;
+                f.facing = (sdx > 0f ? -1f : 1f);
+                f.swimPhase += dt * (f.swimSpeedMultiplier * 1.4f);
+            } else if ((isDunk || isSharkPredator) && !bobo.isRescuing && mountedCreature == null && f.cooldownTimer <= 0f) {
+                float detectDist = isDunk ? 300f : 340f;
+                float telegraphDur = isDunk ? 0.55f : 0.45f;
+                float chargeDur = isDunk ? 1.6f : 2.2f;
+                float chargeSpd = isDunk ? 135f : (f.species == RealisticFish.Species.GREAT_SHARK ? 145f : 112f);
+                float cooldownDur = isDunk ? 2.2f : 1.8f;
+
                 if (f.telegraphTimer > 0f) {
                     f.telegraphTimer -= dt;
                     f.facing = (sdx > 0 ? 1f : -1f);
                     f.isAttacking = false;
                     f.swimPhase += dt * (f.swimSpeedMultiplier * 1.4f);
-                    if (f.telegraphTimer <= 0f) {
-                        f.chargeTimer = 1.6f;
-                    }
+                    if (f.telegraphTimer <= 0f) f.chargeTimer = chargeDur;
                 } else if (f.chargeTimer > 0f) {
                     f.chargeTimer -= dt;
                     f.isAttacking = true;
                     f.facing = (sdx > 0 ? 1f : -1f);
                     if (sDist > 1f) {
-                        f.x += (sdx / sDist) * 135f * dt;
-                        f.y += (sdy / sDist) * 135f * dt;
+                        f.x += (sdx / sDist) * chargeSpd * dt;
+                        f.y += (sdy / sDist) * chargeSpd * dt;
                     }
-                    f.swimPhase += dt * (f.swimSpeedMultiplier * 1.6f);
+                    f.swimPhase += dt * (f.swimSpeedMultiplier * 1.7f);
                     if (sDist < (f.bodyHeight * 0.62f + 34f) && invincibleTimer <= 0f) {
-                        oxygen = Math.max(0f, oxygen - 18f);
+                        float loss = isDunk ? 18f : (f.species == RealisticFish.Species.GREAT_SHARK ? 22f : 14f);
+                        oxygen = Math.max(0f, oxygen - loss);
                         invincibleTimer = 1.6f;
                         screenShakeTimer = 0.32f;
                         hurtFlashTimer = 0.32f;
                         if (sDist > 1f) {
                             diverVx += (sdx / sDist) * 210f;
                             diverVy += (sdy / sDist) * 210f;
-                            f.x -= (sdx / sDist) * 36f;
-                            f.y -= (sdy / sDist) * 36f;
+                            f.x -= (sdx / sDist) * 42f;
+                            f.y -= (sdy / sDist) * 42f;
                         }
                         f.chargeTimer = 0f;
                         f.isAttacking = false;
-                        f.cooldownTimer = 2.2f;
+                        f.cooldownTimer = cooldownDur;
                         SoundManager.get(getContext()).playHurt();
-                        addFX(diverX, diverY - 50f, "🛡️ 哎呀！被鐵甲鄧氏魚頂到了！", 0xFFFFD54F, 30f);
+                        addFX(diverX, diverY - 50f, isDunk ? "🛡️ 被鐵甲鄧氏魚頂了一下！" : "🫧 被鯊魚頂了一下！", 0xFFFFD54F, 30f);
                         if (oxygen <= 0f) triggerDolphinRescue();
                     } else if (f.chargeTimer <= 0f) {
                         f.isAttacking = false;
-                        f.cooldownTimer = 2.2f;
+                        f.cooldownTimer = cooldownDur;
                     }
-                } else if (sDist < 300f) {
-                    f.telegraphTimer = 0.55f;
+                } else if (sDist < detectDist) {
+                    f.telegraphTimer = telegraphDur;
                     f.facing = (sdx > 0 ? 1f : -1f);
                 } else {
                     f.isAttacking = false;
                     f.swimPhase += dt * f.swimSpeedMultiplier;
                     f.x += f.vx * 60f * dt;
-                    f.y += (float) Math.sin(f.swimPhase) * 1.6f;
+                    f.y += (float) Math.sin(f.swimPhase) * 84f * dt;
                     if (f.x < 90f) { f.x = 90f; f.vx = Math.abs(f.vx); f.facing = 1f; }
                     else if (f.x > worldWidth - 90f) { f.x = worldWidth - 90f; f.vx = -Math.abs(f.vx); f.facing = -1f; }
-                }
-            } else if (isSharkPredator && sDist < 350f && !bobo.isRescuing && mountedCreature == null) {
-                f.isAttacking = true;
-                f.facing = (sdx > 0 ? 1f : -1f);
-                float chargeSpeed = (f.species == RealisticFish.Species.GREAT_SHARK ? 145f : 110f);
-                f.x += (sdx / sDist) * chargeSpeed * dt;
-                f.y += (sdy / sDist) * chargeSpeed * dt;
-                f.swimPhase += dt * (f.swimSpeedMultiplier * 1.8f);
-
-                if (sDist < (f.bodyHeight * 0.65f + 32f)) {
-                    if (invincibleTimer <= 0f) {
-                        float loss = (f.species == RealisticFish.Species.GREAT_SHARK) ? 22f : 14f;
-                        oxygen = Math.max(0f, oxygen - loss);
-                        invincibleTimer = 1.6f;
-                        screenShakeTimer = 0.35f;
-                        hurtFlashTimer = 0.35f;
-
-                        diverVx += (sdx / sDist) * 220f;
-                        diverVy += (sdy / sDist) * 220f;
-
-                        SoundManager.get(getContext()).playHurt();
-                        addFX(diverX, diverY - 50f, "🫧 哎呀！被鯊魚頂了一下！", 0xFFFFB74D, 32f);
-
-                        if (oxygen <= 0f) {
-                            triggerDolphinRescue();
-                        }
-                    }
                 }
             } else {
                 f.isAttacking = false;
                 f.swimPhase += dt * f.swimSpeedMultiplier;
                 f.x += f.vx * 60f * dt;
-                f.y += (float) Math.sin(f.swimPhase) * 1.6f;
+                f.y += (float) Math.sin(f.swimPhase) * 84f * dt;
 
                 if (f.x < 70f) {
                     f.x = 70f;
@@ -1325,44 +1475,56 @@ public class DiverGameView extends View {
                     f.facing = -1f;
                 }
             }
+            f.y = Math.max(175f, Math.min(worldHeight - 125f, f.y));
 
             if (f.species == RealisticFish.Species.BABY_SHARK && random.nextInt(200) == 0) {
                 addFX(f.x, f.y - 35f, "🎵 Doo Doo Doo~", 0xFFFFD166, 24f);
             }
 
-            // Auto-aim target
-            float dx = f.x - diverX;
-            float dy = f.y - diverY;
-            boolean inFront = (targetFacingScale > 0 ? dx > 0 : dx < 0);
-            if (inFront) {
-                float dist = (float) Math.hypot(dx, dy);
-                if (dist < nearestDist) {
-                    nearestDist = dist;
-                    targetFish = f;
+            // Wide-Cone Sticky Auto-Aim (±105° front preferred, rear < 180f allowed, 0.82 hysteresis)
+            if (f.value > 0 && sDist < maxAimRange) {
+                float toFx = f.x - diverX;
+                float faceDir = targetFacingScale >= 0f ? 1f : -1f;
+                float cosA = (toFx * faceDir) / Math.max(1f, sDist);
+                float penalty = -1f;
+                if (cosA >= -0.2588f) penalty = 1.0f;
+                else if (sDist < 180f) penalty = 1.35f;
+                if (penalty > 0f) {
+                    float score = sDist * penalty * (f == prevTarget ? 0.82f : 1.0f);
+                    if (score < bestScore) {
+                        bestScore = score;
+                        targetFish = f;
+                    }
                 }
             }
         }
 
-        // Harpoon Update
+        // Harpoon Update (dt-independent firing & weight-based elastic reeling)
         float maxHarpoonRange = state.getHarpoonRange();
         if (harpoonState == HarpoonState.FIRING) {
-            harpoonX += harpoonVx;
-            harpoonY += harpoonVy;
+            harpoonX += harpoonVx * dt;
+            harpoonY += harpoonVy * dt;
             harpoonDist = (float) Math.hypot(harpoonX - harpoonStartX, harpoonY - harpoonStartY);
+            if (harpoonY <= 140f) {
+                harpoonY = 140f;
+                harpoonState = HarpoonState.REELING;
+            }
 
-            for (RealisticFish f : fishes) {
-                if (Math.hypot(harpoonX - f.x, harpoonY - f.y) < (f.bodyHeight * 0.65f)) {
-                    if (f.species == RealisticFish.Species.DUNKLEOSTEUS && state.harpoonLevel < 4) {
-                        SoundManager.get(getContext()).playBubble();
-                        spawnBurst(harpoonX, harpoonY, 0xFFFFD54F, 8);
-                        addFX(f.x, f.y - 60f, "🛡️ → 🫧 / ⬆️🎯", 0xFFFFD54F, 30f);
+            if (harpoonState == HarpoonState.FIRING) {
+                for (RealisticFish f : fishes) {
+                    if (Math.hypot(harpoonX - f.x, harpoonY - f.y) < (f.bodyHeight * 0.65f)) {
+                        if (f.species == RealisticFish.Species.DUNKLEOSTEUS && state.harpoonLevel < 4) {
+                            SoundManager.get(getContext()).playBubble();
+                            spawnBurst(harpoonX, harpoonY, 0xFFFFD54F, 8);
+                            addFX(f.x, f.y - 60f, "🛡️ → 🫧 / ⬆️🎯", 0xFFFFD54F, 30f);
+                            harpoonState = HarpoonState.REELING;
+                            break;
+                        }
+                        hookedFish = f;
+                        harpoonRopeAmp = 18f;
                         harpoonState = HarpoonState.REELING;
                         break;
                     }
-                    hookedFish = f;
-                    harpoonState = HarpoonState.REELING;
-                    addFX(f.x, f.y - 25f, "🎯 鎖定命中！收線回捲！", 0xFFFFD700, 32f);
-                    break;
                 }
             }
 
@@ -1380,10 +1542,9 @@ public class DiverGameView extends View {
                 if (hookedFish != null) {
                     state.addCaughtFish(hookedFish.name, hookedFish.value, hookedFish.weightKg);
                     SoundManager.get(getContext()).playCatch();
-                    spawnBurst(diverX, diverY, 0xFFFFD700, 14);
+                    if (burstParticles.size() < 56) spawnBurst(diverX, diverY, 0xFFFFD700, 12);
                     avatarCelebrateTimer = 0.55f;
-                    addFX(diverX, diverY - 65f, "⭐ 捕獲 " + hookedFish.name + " (" + hookedFish.weightKg + "kg)！", 0xFFFFD700, 34f);
-                    addFX(diverX, diverY - 25f, "💰 自動兌換金幣 +" + hookedFish.value + " 貝殼金幣！", 0xFF00E676, 30f);
+                    addFX(diverX, diverY - 65f, "⭐ +" + hookedFish.value + " 🐚", 0xFFFFD700, 34f);
                     if (listener != null) listener.onCoinsUpdated(state.coins);
 
                     hookedFish.x = (random.nextBoolean() ? 80f : worldWidth - 80f);
@@ -1394,9 +1555,13 @@ public class DiverGameView extends View {
                 }
                 harpoonState = HarpoonState.IDLE;
             } else {
-                float reelSpeed = 26f;
-                harpoonX += (dx / dist) * reelSpeed;
-                harpoonY += (dy / dist) * reelSpeed;
+                float wKg = hookedFish != null ? hookedFish.weightKg : 1f;
+                float reelSpd = hookedFish != null
+                        ? Math.max(720f, Math.min(1520f, 1520f / (1f + (float) Math.log10(1f + wKg) * 0.30f)))
+                        : 1560f;
+                float step = Math.min(dist, reelSpd * dt);
+                harpoonX += (dx / dist) * step;
+                harpoonY += (dy / dist) * step;
                 if (hookedFish != null) {
                     hookedFish.x = harpoonX;
                     hookedFish.y = harpoonY;
@@ -1567,50 +1732,62 @@ public class DiverGameView extends View {
             }
         }
 
-        // Volumetric Gradient Sunlight God-Rays
+        // Volumetric Gradient Sunlight God-Rays (Zero-Allocation cached Shader & reusableEnvPath)
         float sway = (float) Math.sin(now / 1100.0) * 55f;
-        envPaint.setShader(new LinearGradient(
-            0, 140f, 0, 980f,
-            new int[]{ 0x26FFFFFF, 0x0FFFFFFF, 0x00FFFFFF },
-            new float[]{ 0f, 0.55f, 1f },
-            Shader.TileMode.CLAMP
-        ));
+        if (cachedRayShader == null) {
+            cachedRayShader = new LinearGradient(
+                0, 140f, 0, 980f,
+                new int[]{ 0x26FFFFFF, 0x0FFFFFFF, 0x00FFFFFF },
+                new float[]{ 0f, 0.55f, 1f },
+                Shader.TileMode.CLAMP
+            );
+        }
+        envPaint.setShader(cachedRayShader);
         for (float rx = 180f; rx < worldWidth; rx += 460f) {
-            Path ray = new Path();
-            ray.moveTo(rx + sway * 0.4f, 140f);
-            ray.lineTo(rx + 200f + sway, 980f);
-            ray.lineTo(rx + 85f + sway, 980f);
-            ray.lineTo(rx - 75f + sway * 0.4f, 140f);
-            ray.close();
-            canvas.drawPath(ray, envPaint);
+            reusableEnvPath.reset();
+            reusableEnvPath.moveTo(rx + sway * 0.4f, 140f);
+            reusableEnvPath.lineTo(rx + 200f + sway, 980f);
+            reusableEnvPath.lineTo(rx + 85f + sway, 980f);
+            reusableEnvPath.lineTo(rx - 75f + sway * 0.4f, 140f);
+            reusableEnvPath.close();
+            canvas.drawPath(reusableEnvPath, envPaint);
         }
         envPaint.setShader(null);
 
-        // Shallow Water Caustic Shimmer
-        if (cameraY < 900f) {
+        // Dual-Phase Shallow Water Caustic Light Ribbons (Zero-Allocation)
+        if (cameraY < 850f) {
+            float causticFade = Math.max(0f, 1f - cameraY / 850f);
             envPaint.setStyle(Paint.Style.STROKE);
-            envPaint.setStrokeWidth(3f);
-            envPaint.setColor(0x16B2EBF2);
-            for (int c = 0; c < 6; c++) {
-                float cx = 220f + c * 420f + (float) Math.sin(now / 700.0 + c) * 35f;
-                float cy = 260f + (c % 2) * 140f + (float) Math.cos(now / 900.0 + c) * 20f;
-                canvas.drawOval(cx - 85f, cy - 16f, cx + 85f, cy + 16f, envPaint);
+            envPaint.setStrokeWidth(10f);
+            envPaint.setColor(Color.argb((int) (34 * causticFade), 178, 235, 242));
+            for (int band = 0; band < 2; band++) {
+                float baseY = 230f + band * 165f;
+                reusableEnvPath.reset();
+                float startX = Math.max(0f, cameraX - 80f);
+                float endX = Math.min(worldWidth, cameraX + w + 80f);
+                for (float rx = startX; rx <= endX; rx += 70f) {
+                    float ry = baseY + (float) Math.sin(rx * 0.012 + now * 0.0014 + band * 2.1) * 26f
+                            + (float) Math.cos(rx * 0.022 - now * 0.0018) * 14f;
+                    if (rx <= startX) reusableEnvPath.moveTo(rx, ry);
+                    else reusableEnvPath.lineTo(rx, ry);
+                }
+                canvas.drawPath(reusableEnvPath, envPaint);
             }
             envPaint.setStyle(Paint.Style.FILL);
         }
 
-        // Animated Ocean Surface Waves & Foam Line
+        // Animated Ocean Surface Waves & Foam Line (Zero-Allocation)
         if (cameraY < 260f) {
-            Path wavePath = new Path();
-            wavePath.moveTo(0, 140f);
+            reusableEnvPath.reset();
+            reusableEnvPath.moveTo(0, 140f);
             for (float wx = 0; wx <= worldWidth; wx += 40f) {
                 float wy = 140f + (float) Math.sin(wx * 0.025 + now / 320.0) * 7f;
-                wavePath.lineTo(wx, wy);
+                reusableEnvPath.lineTo(wx, wy);
             }
             envPaint.setStyle(Paint.Style.STROKE);
             envPaint.setStrokeWidth(7f);
             envPaint.setColor(0xCCE0F7FA);
-            canvas.drawPath(wavePath, envPaint);
+            canvas.drawPath(reusableEnvPath, envPaint);
             envPaint.setStyle(Paint.Style.FILL);
         }
 
@@ -1726,14 +1903,23 @@ public class DiverGameView extends View {
             drawAimReticle(canvas, targetFish);
         }
 
-        // Harpoon Rope & Spear
+        // Elastic Oscillating Bezier Harpoon Rope & Spear (Zero-Allocation)
         if (harpoonState != HarpoonState.IDLE) {
+            float mx = (harpoonStartX + harpoonX) * 0.5f;
+            float my = (harpoonStartY + harpoonY) * 0.5f;
+            float rdx = harpoonX - harpoonStartX;
+            float rdy = harpoonY - harpoonStartY;
+            float rlen = Math.max(1f, (float) Math.hypot(rdx, rdy));
+            float vib = harpoonRopeAmp * (float) Math.sin(now * 0.035);
             ropePaint.setColor(0xFFFFDF00);
             ropePaint.setStrokeWidth(4.5f);
             ropePaint.setStyle(Paint.Style.STROKE);
-            canvas.drawLine(harpoonStartX, harpoonStartY, harpoonX, harpoonY, ropePaint);
+            reusableEnvPath.reset();
+            reusableEnvPath.moveTo(harpoonStartX, harpoonStartY);
+            reusableEnvPath.quadTo(mx + (-rdy / rlen) * vib, my + (rdx / rlen) * vib, harpoonX, harpoonY);
+            canvas.drawPath(reusableEnvPath, ropePaint);
 
-            harpoonPaint.setColor(0xFFE0E0E0);
+            harpoonPaint.setColor(state.harpoonLevel >= 6 ? 0xFFFFD700 : 0xFFE0E0E0);
             harpoonPaint.setStyle(Paint.Style.FILL);
             canvas.drawCircle(harpoonX, harpoonY, 9f, harpoonPaint);
         }
@@ -2282,52 +2468,79 @@ public class DiverGameView extends View {
         canvas.scale(facingScale, 1.0f);
         canvas.rotate((float) Math.toDegrees(diverAngle));
 
-        // Headlamp Flashlight Light Cone
+        // Dual-Layer Headlamp Flashlight Cone (Zero-Allocation cached Shader & reusableEnvPath)
         float lightRadius = state.getLightRadius();
+        if (cachedHeadlampShader == null || cachedHeadlampRadius != lightRadius || cachedHeadlampLevel != state.lightLevel) {
+            cachedHeadlampRadius = lightRadius;
+            cachedHeadlampLevel = state.lightLevel;
+            cachedHeadlampShader = new RadialGradient(
+                45f, 0f, lightRadius,
+                state.lightLevel >= 6
+                    ? new int[]{ 0x7AE0F7FA, 0x2880DEEA, 0x00000000 }
+                    : new int[]{ 0x77FFFDE7, 0x22FFE082, 0x00000000 },
+                new float[]{ 0.0f, 0.55f, 1.0f },
+                Shader.TileMode.CLAMP
+            );
+        }
         lightPaint.setStyle(Paint.Style.FILL);
-        lightPaint.setShader(new RadialGradient(
-            45f, 0f, lightRadius,
-            new int[]{ 0x77FFFDE7, 0x22FFE082, 0x00000000 },
-            new float[]{ 0.0f, 0.55f, 1.0f },
-            Shader.TileMode.CLAMP
-        ));
-        Path lightCone = new Path();
-        lightCone.moveTo(42f, -8f);
-        lightCone.lineTo(lightRadius, -lightRadius * 0.35f);
-        lightCone.lineTo(lightRadius, lightRadius * 0.35f);
-        lightCone.close();
-        canvas.drawPath(lightCone, lightPaint);
+        lightPaint.setShader(cachedHeadlampShader);
+        reusableEnvPath.reset();
+        reusableEnvPath.moveTo(42f, -8f);
+        reusableEnvPath.lineTo(lightRadius, -lightRadius * 0.42f);
+        reusableEnvPath.lineTo(lightRadius, lightRadius * 0.42f);
+        reusableEnvPath.close();
+        canvas.drawPath(reusableEnvPath, lightPaint);
+        reusableEnvPath.reset();
+        reusableEnvPath.moveTo(42f, -5f);
+        reusableEnvPath.lineTo(lightRadius * 0.85f, -lightRadius * 0.18f);
+        reusableEnvPath.lineTo(lightRadius * 0.85f, lightRadius * 0.18f);
+        reusableEnvPath.close();
+        canvas.drawPath(reusableEnvPath, lightPaint);
         lightPaint.setShader(null);
 
-        // Legs & Flutter kick
+        // Legs & Lv.1~8 Evolving Flippers (Zero-Allocation)
         float kick1 = (float) Math.sin(swimCycle) * 16f;
         float kick2 = (float) Math.sin(swimCycle + Math.PI) * 16f;
+        int finC1 = state.speedLevel >= 6 ? 0xFF00E5FF : (state.speedLevel >= 3 ? 0xFF29B6F6 : 0xFFFF6D00);
+        int finC2 = state.speedLevel >= 6 ? 0xFFFFD700 : (state.speedLevel >= 3 ? 0xFFFFD54F : 0xFFFF8500);
 
         diverPaint.setColor(0xFF003865);
         canvas.drawRoundRect(-32f, -14f + kick1 * 0.3f, -14f, -4f + kick1 * 0.3f, 4f, 4f, diverPaint);
-        diverPaint.setColor(0xFFFF6D00);
-        Path fin1 = new Path();
-        fin1.moveTo(-32f, -9f + kick1 * 0.3f);
-        fin1.lineTo(-68f, -18f + kick1);
-        fin1.lineTo(-52f, -4f + kick1 * 0.5f);
-        fin1.close();
-        canvas.drawPath(fin1, diverPaint);
+        diverPaint.setColor(finC1);
+        reusableEnvPath.reset();
+        reusableEnvPath.moveTo(-32f, -9f + kick1 * 0.3f);
+        reusableEnvPath.lineTo(-70f, -20f + kick1);
+        reusableEnvPath.lineTo(-52f, -4f + kick1 * 0.5f);
+        reusableEnvPath.close();
+        canvas.drawPath(reusableEnvPath, diverPaint);
 
         diverPaint.setColor(0xFF004D80);
         canvas.drawRoundRect(-30f, 4f + kick2 * 0.3f, -12f, 14f + kick2 * 0.3f, 4f, 4f, diverPaint);
-        diverPaint.setColor(0xFFFF8500);
-        Path fin2 = new Path();
-        fin2.moveTo(-30f, 9f + kick2 * 0.3f);
-        fin2.lineTo(-68f, 18f + kick2);
-        fin2.lineTo(-52f, 4f + kick2 * 0.5f);
-        fin2.close();
-        canvas.drawPath(fin2, diverPaint);
+        diverPaint.setColor(finC2);
+        reusableEnvPath.reset();
+        reusableEnvPath.moveTo(-30f, 9f + kick2 * 0.3f);
+        reusableEnvPath.lineTo(-70f, 20f + kick2);
+        reusableEnvPath.lineTo(-52f, 4f + kick2 * 0.5f);
+        reusableEnvPath.close();
+        canvas.drawPath(reusableEnvPath, diverPaint);
 
-        // Scuba Twin Tanks
-        diverPaint.setColor(0xFFFFD166);
-        canvas.drawRoundRect(-36f, -22f, -18f, 22f, 7f, 7f, diverPaint);
-        diverPaint.setColor(0xFF263238);
-        canvas.drawRect(-34f, -6f, -20f, 6f, diverPaint);
+        // Lv.1~8 Evolving Scuba Tank
+        if (state.oxygenLevel >= 6) {
+            diverPaint.setColor(0xFFECEFF1);
+            canvas.drawRoundRect(-40f, -24f, -18f, 24f, 9f, 9f, diverPaint);
+            diverPaint.setColor(0xFF00E5FF);
+            canvas.drawRect(-35f, -14f, -28f, 14f, diverPaint);
+        } else if (state.oxygenLevel >= 3) {
+            diverPaint.setColor(0xFF1565C0);
+            canvas.drawRoundRect(-38f, -23f, -18f, 23f, 8f, 8f, diverPaint);
+            diverPaint.setColor(0xFFFFD700);
+            canvas.drawRect(-38f, -5f, -18f, 5f, diverPaint);
+        } else {
+            diverPaint.setColor(0xFFFFD166);
+            canvas.drawRoundRect(-36f, -22f, -18f, 22f, 7f, 7f, diverPaint);
+            diverPaint.setColor(0xFF263238);
+            canvas.drawRect(-34f, -6f, -20f, 6f, diverPaint);
+        }
 
         // Dave Wetsuit Torso
         diverPaint.setColor(0xFF0077BE);
@@ -2465,30 +2678,24 @@ public class DiverGameView extends View {
 
         float oxPercent = Math.max(0f, oxygen / maxOxygen);
 
-        // Low O2 Pulsing Warning Vignette + Dolphin Rescue Visual Badge
+        // Calm 0.4Hz Warm Coral Low-O2 Glow (never flashes harsh red, banner positioned BELOW weapon pill)
         if (oxPercent < 0.25f && !bobo.isRescuing && mountedCreature == null) {
-            int pulseAlpha = (int)(45 + Math.sin(SystemClock.uptimeMillis() / 150.0) * 35);
-            hudPaint.setColor(Color.argb(pulseAlpha, 255, 82, 82));
-            canvas.drawRect(0, 0, w, 14, hudPaint);
-            canvas.drawRect(0, h - 14, w, h, hudPaint);
-            canvas.drawRect(0, 0, 14, h, hudPaint);
-            canvas.drawRect(w - 14, 0, w, h, hudPaint);
+            float breath = 0.5f + 0.5f * (float) Math.sin(SystemClock.uptimeMillis() * 0.0025);
+            int pulseAlpha = (int) (25 + breath * 40);
+            hudPaint.setColor(Color.argb(pulseAlpha, 255, 138, 101));
+            canvas.drawRect(0, 0, w, 12, hudPaint);
+            canvas.drawRect(0, h - 12, w, h, hudPaint);
+            canvas.drawRect(0, 0, 12, h, hudPaint);
+            canvas.drawRect(w - 12, 0, w, h, hudPaint);
 
-            // Sequence 3: Big Friendly Dolphin Rescue Alert Banner!
+            // Friendly Dolphin Rescue Banner safely BELOW Top-Center Weapon Pill (y: 106~158)
             hudPaint.setColor(0xEEFF4081);
-            canvas.drawRoundRect(w * 0.25f, 15f, w * 0.75f, 75f, 16f, 16f, hudPaint);
-
-            float badgePulse = 1.0f + 0.14f * (float) Math.sin(SystemClock.uptimeMillis() / 130.0);
-            hudPaint.setColor(0xFF00E5FF);
-            canvas.drawCircle(w * 0.25f + 36f, 45f, 22f * badgePulse, hudPaint);
+            canvas.drawRoundRect(w * 0.30f, 106f, w * 0.70f, 158f, 22f, 22f, hudPaint);
             textPaint.setColor(Color.WHITE);
-            textPaint.setTextSize(26f);
-            textPaint.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText("🐬", w * 0.25f + 36f, 54f, textPaint);
-
-            textPaint.setTextSize(24f);
+            textPaint.setTextSize(23f);
             textPaint.setFakeBoldText(true);
-            canvas.drawText("按 OK 呼叫海豚波波救援！", w / 2f + 16f, 52f, textPaint);
+            textPaint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("🐬 按 OK 呼叫波波救援！", w / 2f, 140f, textPaint);
             textPaint.setTextAlign(Paint.Align.LEFT);
         }
 
@@ -2662,11 +2869,33 @@ public class DiverGameView extends View {
         }
         hudPaint.setStyle(Paint.Style.FILL);
 
-        // Pad / Touch Controls: Bottom-Right Big Action & Switch Buttons
+        // Pad / Touch Controls: Bottom-Right Context-Aware Action, Switch & One-Tap Surface Ascent Buttons
         float actCx = w - 125f;
         float actCy = h - 135f;
         float actR = isTouchActionPressed ? 64f : 72f;
-        hudPaint.setColor(isHarpoon ? 0xDDFFB300 : 0xDD00B8D4);
+        String actIcon = isHarpoon ? "🎯" : "🫧";
+        int actBg = isHarpoon ? 0xDDFFB300 : 0xDD00B8D4;
+        if (mountedCreature != null) { actIcon = "⬇️"; actBg = 0xEE43A047; }
+        else if (bobo.active && !bobo.isRescuing && oxPercent < 0.25f) { actIcon = "🐬"; actBg = 0xEEFF4081; }
+        else {
+            boolean foundCtx = false;
+            for (TreasureChest c : treasureChests) {
+                if (!c.opened && Math.hypot(diverX - c.x, diverY - c.y) < 140f) { actIcon = "🎁"; actBg = 0xEEFF9800; foundCtx = true; break; }
+            }
+            if (!foundCtx) {
+                for (PearlClam pc : pearlClams) {
+                    if (pc.hasPearl && Math.sin(pc.openCycle) > 0.35 && Math.hypot(diverX - pc.x, diverY - pc.y) < 120f) { actIcon = "🦪"; actBg = 0xEEAB47BC; foundCtx = true; break; }
+                }
+            }
+            if (!foundCtx) {
+                for (RealisticFish f : fishes) {
+                    if (f.isSleeping && Math.hypot(diverX - f.x, diverY - f.y) < 120f) { actIcon = "💖"; actBg = 0xEEEC407A; break; }
+                    if (f.species == RealisticFish.Species.TURTLE && Math.hypot(diverX - f.x, diverY - f.y) < 130f) { actIcon = "🐢"; actBg = 0xEE43A047; break; }
+                    if (f.species == RealisticFish.Species.BLUE_WHALE && Math.hypot(diverX - f.x, diverY - f.y) < 180f) { actIcon = "🐋"; actBg = 0xEE039BE5; break; }
+                }
+            }
+        }
+        hudPaint.setColor(actBg);
         canvas.drawCircle(actCx, actCy, actR, hudPaint);
         hudPaint.setStyle(Paint.Style.STROKE);
         hudPaint.setStrokeWidth(4f);
@@ -2674,7 +2903,23 @@ public class DiverGameView extends View {
         canvas.drawCircle(actCx, actCy, actR, hudPaint);
         hudPaint.setStyle(Paint.Style.FILL);
         textPaint.setTextSize(42f);
-        canvas.drawText(isHarpoon ? "🎯" : "🫧", actCx, actCy + 14f, textPaint);
+        canvas.drawText(actIcon, actCx, actCy + 14f, textPaint);
+
+        // One-tap Auto-Surface / Bobo Rescue Bubble above Action Button
+        if ((oxPercent < 0.30f || depthMeters > 120) && !bobo.isRescuing) {
+            float upCx = actCx;
+            float upCy = actCy - 126f;
+            float upBreath = 1f + 0.06f * (float) Math.sin(SystemClock.uptimeMillis() * 0.0025);
+            hudPaint.setColor(oxPercent < 0.25f ? 0xEEFF4081 : (autoSurfaceActive ? 0xEE00E5FF : 0xDD0288D1));
+            canvas.drawCircle(upCx, upCy, 40f * upBreath, hudPaint);
+            hudPaint.setStyle(Paint.Style.STROKE);
+            hudPaint.setStrokeWidth(3f);
+            hudPaint.setColor(Color.WHITE);
+            canvas.drawCircle(upCx, upCy, 40f * upBreath, hudPaint);
+            hudPaint.setStyle(Paint.Style.FILL);
+            textPaint.setTextSize(28f);
+            canvas.drawText(oxPercent < 0.25f ? "🐬" : "⬆️", upCx, upCy + 10f, textPaint);
+        }
 
         float swCx = w - 260f;
         float swCy = h - 105f;
@@ -2687,6 +2932,13 @@ public class DiverGameView extends View {
         hudPaint.setStyle(Paint.Style.FILL);
         textPaint.setTextSize(30f);
         canvas.drawText("🔄", swCx, swCy + 10f, textPaint);
+
+        // Version badge v2.0
+        textPaint.setTextAlign(Paint.Align.RIGHT);
+        textPaint.setColor(0x88FFFFFF);
+        textPaint.setTextSize(16f);
+        canvas.drawText("v2.0", w - 18f, h - 14f, textPaint);
+        textPaint.setTextAlign(Paint.Align.LEFT);
 
         // Bottom Remote Guide (Icon-First for 4-year-old kids)
         hudPaint.setColor(0xD8001226);

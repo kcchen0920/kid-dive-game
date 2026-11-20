@@ -27,6 +27,7 @@ export class DiveGame {
     this.inputX = 0;
     this.inputY = 0;
     this.joystickPointerId = null;
+    this.actionPointerId = null;
     this.joystickOriginX = 0;
     this.joystickOriginY = 0;
     this.joystickKnobX = 0;
@@ -35,9 +36,15 @@ export class DiveGame {
     this.isTouchActionPressed = false;
     this.joystickRadius = 78;
     this.lastShopTapTime = 0;
+    this.autoSurfaceActive = false;
+
+    // Fixed-timestep physics accumulator (anti-spiral capped)
+    this.accumulator = 0;
+    this.simTime = 0;
 
     this.currentWeapon = 'HARPOON'; // 'HARPOON' | 'BUBBLE_GUN'
     this.mountedCreature = null;
+    this.mountGraceTimer = 0;
 
     this.bindEvents();
     this.initGame();
@@ -62,6 +69,14 @@ export class DiveGame {
     this.hurtFlashTimer = 0;
     this.avatarCelebrateTimer = 0;
     this.mountedCreature = null;
+    this.mountGraceTimer = 0;
+    this.autoSurfaceActive = false;
+    this.splashCooldown = 0;
+    this.wasAboveSurface = false;
+    this.whaleSpoutTimer = 0;
+    this.harpoonRopeAmp = 0;
+    this.accumulator = 0;
+    this.simTime = 0;
 
     this.harpoonState = 'IDLE'; // IDLE | FIRING | REELING
     this.harpoonStartX = 0;
@@ -111,17 +126,19 @@ export class DiveGame {
       { x: 640, y: 3920, rewardCoins: 90, openCycle: 1.1, hasPearl: true, respawnTimer: 0 },
     ];
 
-    // Kelp
-    this.kelpForest = [];
-    for (let i = 0; i < 22; i++) {
-      this.kelpForest.push({
-        baseX: 120 + Math.random() * (this.worldWidth - 240),
-        baseY: 1600 + Math.random() * 900,
-        height: 220 + Math.random() * 300,
-        segments: 7,
-        phaseOffset: Math.random() * 6.28,
-        isBackground: i % 2 === 0,
-      });
+    // Sunken Shipwreck & Coral Shelves (synced with Android; removed old floating kelpForest)
+    this.shipwreck = { x: 1460, y: 3320, w: 420, h: 150 };
+    const coralPalette = ['#FF6F00', '#E91E63', '#9C27B0', '#00BCD4', '#FFB300'];
+    this.coralShelves = [];
+    for (const depth of [650, 1350, 2150, 2950, 3850, 4900]) {
+      for (let k = 0; k < 3; k++) {
+        this.coralShelves.push({
+          x: 260 + k * 1250 + Math.random() * 280,
+          y: depth + Math.random() * 140,
+          width: 170 + Math.random() * 110,
+          color: coralPalette[(Math.floor(depth) + k) % coralPalette.length],
+        });
+      }
     }
 
     // Marine snow & bubbles
@@ -272,9 +289,15 @@ export class DiveGame {
     this.resize();
     const loop = (now) => {
       if (!this.running) return;
-      const dt = Math.min((now - this.lastFrameTime) / 1000, 0.05);
+      const rawDt = Math.min((now - this.lastFrameTime) / 1000, 0.05);
       this.lastFrameTime = now;
-      this.update(dt, now);
+      const FIXED_DT = 1 / 60;
+      this.accumulator = Math.min(this.accumulator + rawDt, FIXED_DT * 3);
+      while (this.accumulator >= FIXED_DT) {
+        this.simTime += FIXED_DT;
+        this.update(FIXED_DT, this.simTime * 1000);
+        this.accumulator -= FIXED_DT;
+      }
       this.render(now);
       this.rafId = requestAnimationFrame(loop);
     };
@@ -289,11 +312,22 @@ export class DiveGame {
   bindEvents() {
     window.addEventListener('resize', () => this.resize());
 
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.joystickPointerId = null;
+      this.actionPointerId = null;
+      this.isTouchJoystickActive = false;
+      this.isTouchActionPressed = false;
+      this.inputX = 0;
+      this.inputY = 0;
+    });
+
     window.addEventListener('keydown', (e) => {
       if (!this.running) return;
       this.sound.unlock();
       if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's', 'A', 'D', 'W', 'S'].includes(e.key)) {
         this.keys.add(e.key);
+        this.autoSurfaceActive = false;
         e.preventDefault();
       } else if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) {
         this.onActionPressed();
@@ -342,34 +376,57 @@ export class DiveGame {
         return;
       }
 
-      // Bottom-right switch button
+      // Bottom-right controls geometry
       const s = this.hudScale || 1;
       const actR = 54 * Math.max(0.78, s);
       const actCx = w - 26 - actR;
       const actCy = h - 28 - actR;
       const swR = 36 * Math.max(0.78, s);
-      const swCx = actCx - actR - 24 - swR;
+      const swCx = actCx - actR - 22 - swR;
       const swCy = h - 28 - swR;
+
+      // One-tap Auto-Surface / Bobo Rescue bubble above Action Button (when O2 < 30% or depth > 120m)
+      const oxPct = this.oxygen / this.maxOxygen;
+      const depthM = Math.max(0, (this.diverY - 140) / 10);
+      if ((oxPct < 0.30 || depthM > 120) && !this.bobo.isRescuing) {
+        const upR = 34 * Math.max(0.78, s);
+        const upCx = actCx;
+        const upCy = actCy - actR - 18 - upR;
+        if (Math.hypot(tx - upCx, ty - upCy) <= upR + 14) {
+          if (oxPct < 0.25) {
+            this.triggerDolphinRescue();
+          } else {
+            this.autoSurfaceActive = !this.autoSurfaceActive;
+            this.sound.playBubble();
+            this.addFX(this.diverX, this.diverY - 55, this.autoSurfaceActive ? '⬆️⛵ 自動上浮中！' : '✋ 已取消自動上浮', '#80DEEA', 24);
+          }
+          return;
+        }
+      }
 
       if (Math.hypot(tx - swCx, ty - swCy) <= swR + 14) {
         this.toggleWeapon();
         return;
       }
 
-      if (Math.hypot(tx - actCx, ty - actCy) <= actR + 18 || tx >= w * 0.55) {
+      // Anti-mistap Action Button: generous 1.45x hit radius & 16px right-edge palm guard (no whole-right-half misfire!)
+      if (tx <= w - 16 && Math.hypot(tx - actCx, ty - actCy) <= actR * 1.45) {
+        this.actionPointerId = e.pointerId;
         this.isTouchActionPressed = true;
         this.onActionPressed();
         return;
       }
 
-      // Left virtual joystick
-      if (this.joystickPointerId === null) {
+      // Left Dynamic Follow-Origin Virtual Joystick (clamped inside safe bounds)
+      if (this.joystickPointerId === null && tx < w * 0.62) {
         this.joystickPointerId = e.pointerId;
         this.isTouchJoystickActive = true;
-        this.joystickOriginX = tx;
-        this.joystickOriginY = ty;
-        this.joystickKnobX = tx;
-        this.joystickKnobY = ty;
+        this.autoSurfaceActive = false;
+        const R = this.joystickRadius;
+        this.joystickOriginX = Math.max(R + 16, Math.min(w * 0.48, tx));
+        this.joystickOriginY = Math.max(h * 0.25, Math.min(h - R - 16, ty));
+        this.joystickKnobX = this.joystickOriginX;
+        this.joystickKnobY = this.joystickOriginY;
         this.canvas.setPointerCapture?.(e.pointerId);
       }
     });
@@ -379,22 +436,41 @@ export class DiveGame {
       const { x: mx, y: my } = getPos(e);
       let dx = mx - this.joystickOriginX;
       let dy = my - this.joystickOriginY;
-      const dist = Math.hypot(dx, dy);
-      if (dist > this.joystickRadius) {
-        dx = (dx / dist) * this.joystickRadius;
-        dy = (dy / dist) * this.joystickRadius;
+      let dist = Math.hypot(dx, dy);
+      const R = this.joystickRadius;
+      // Dynamic follow-origin when thumb drags past 1.15 * R
+      if (dist > R * 1.15) {
+        const pull = (dist - R * 1.15) * 0.65;
+        this.joystickOriginX = Math.max(R + 16, Math.min(this.viewW * 0.50, this.joystickOriginX + (dx / dist) * pull));
+        this.joystickOriginY = Math.max(this.viewH * 0.22, Math.min(this.viewH - R - 16, this.joystickOriginY + (dy / dist) * pull));
+        dx = mx - this.joystickOriginX;
+        dy = my - this.joystickOriginY;
+        dist = Math.hypot(dx, dy);
+      }
+      if (dist > R) {
+        dx = (dx / dist) * R;
+        dy = (dy / dist) * R;
       }
       this.joystickKnobX = this.joystickOriginX + dx;
       this.joystickKnobY = this.joystickOriginY + dy;
-      this.inputX = dx / this.joystickRadius;
-      this.inputY = dy / this.joystickRadius;
-      if (Math.abs(this.inputX) > 0.12) {
-        this.targetFacingScale = this.inputX > 0 ? 1 : -1;
+      const norm = dist / R;
+      if (norm < 0.14) {
+        this.inputX = 0;
+        this.inputY = 0;
+      } else {
+        this.inputX = dx / R;
+        this.inputY = dy / R;
+        if (Math.abs(this.inputX) > 0.14) {
+          this.targetFacingScale = this.inputX > 0 ? 1 : -1;
+        }
       }
     });
 
     const endPointer = (e) => {
-      this.isTouchActionPressed = false;
+      if (e.pointerId === this.actionPointerId) {
+        this.actionPointerId = null;
+        this.isTouchActionPressed = false;
+      }
       if (e.pointerId === this.joystickPointerId) {
         this.joystickPointerId = null;
         this.isTouchJoystickActive = false;
@@ -420,6 +496,7 @@ export class DiveGame {
 
   onActionPressed() {
     if (this.mountedCreature) {
+      if (this.mountGraceTimer > 0) return; // 0.65s anti-mistap grace period
       this.mountedCreature = null;
       this.sound.playBubble();
       this.addFX(this.diverX, this.diverY - 50, '🌟 平安下騎！', '#00E676', 30);
@@ -434,12 +511,16 @@ export class DiveGame {
     for (const f of this.fishes) {
       if (f.species === 'TURTLE' && Math.hypot(this.diverX - f.x, this.diverY - f.y) < 130) {
         this.mountedCreature = f;
+        this.mountGraceTimer = 0.65;
+        this.autoSurfaceActive = false;
         this.sound.playUpgrade();
         this.addFX(this.diverX, this.diverY - 55, '🐢 騎乘海龜奔奔！', '#00E676', 32);
         return;
       }
       if (f.species === 'BLUE_WHALE' && Math.hypot(this.diverX - f.x, this.diverY - f.y) < 180) {
         this.mountedCreature = f;
+        this.mountGraceTimer = 0.65;
+        this.autoSurfaceActive = false;
         this.sound.playDolphin();
         this.addFX(this.diverX, this.diverY - 55, '🐋 騎乘深海藍鯨！', '#4FC3F7', 34);
         return;
@@ -514,7 +595,10 @@ export class DiveGame {
       const tx = this.targetFish.x - this.harpoonStartX;
       const ty = this.targetFish.y - this.harpoonStartY;
       const d = Math.hypot(tx, ty);
-      if (d > 1) { dx = tx / d; dy = ty / d; }
+      if (d > 1) {
+        dx = tx / d; dy = ty / d;
+        if (Math.abs(tx) > 10) this.targetFacingScale = tx > 0 ? 1 : -1;
+      }
     }
     this.harpoonVx = dx * 1680;
     this.harpoonVy = dy * 1680;
@@ -532,7 +616,7 @@ export class DiveGame {
       const d = Math.hypot(tx, ty);
       if (d > 1) { dx = tx / d; dy = ty / d; }
     }
-    this.activeBubbles.push({ x: sx, y: sy, vx: dx * 960, vy: dy * 960, radius: 20, lifeTime: 2.0 });
+    this.activeBubbles.push({ x: sx, y: sy, vx: dx * 960, vy: dy * 960, radius: 18, lifeTime: 2.0, age: 0 });
     this.sound.playBubbleGun();
   }
 
@@ -573,6 +657,9 @@ export class DiveGame {
     this.screenShakeTimer = Math.max(0, this.screenShakeTimer - dt);
     this.hurtFlashTimer = Math.max(0, this.hurtFlashTimer - dt);
     this.avatarCelebrateTimer = Math.max(0, this.avatarCelebrateTimer - dt);
+    this.mountGraceTimer = Math.max(0, this.mountGraceTimer - dt);
+    this.splashCooldown = Math.max(0, this.splashCooldown - dt);
+    this.harpoonRopeAmp = Math.max(0, this.harpoonRopeAmp - dt * 28);
 
     // Keyboard directional override when joystick inactive
     let kx = this.inputX;
@@ -584,16 +671,30 @@ export class DiveGame {
          - (this.keys.has('ArrowUp') || this.keys.has('w') || this.keys.has('W') ? 1 : 0);
       if (kx !== 0) this.targetFacingScale = kx > 0 ? 1 : -1;
     }
+    if (this.autoSurfaceActive && !this.mountedCreature && !this.bobo.isRescuing) {
+      if (kx !== 0 || ky !== 0 || this.diverY <= 165) {
+        this.autoSurfaceActive = false;
+      } else {
+        ky = -1;
+      }
+    }
     const kLen = Math.hypot(kx, ky);
     if (kLen > 1) { kx /= kLen; ky /= kLen; }
 
-    this.facingScale += (this.targetFacingScale - this.facingScale) * Math.min(1, dt * 12);
+    this.facingScale += (this.targetFacingScale - this.facingScale) * (1 - Math.exp(-12 * dt));
 
     if (this.mountedCreature) {
       this.diverX = this.mountedCreature.x;
       this.diverY = this.mountedCreature.y - (this.mountedCreature.species === 'BLUE_WHALE' ? 50 : 24);
       this.diverAngle = 0;
       this.facingScale = this.mountedCreature.facing;
+      if (this.mountedCreature.species === 'BLUE_WHALE') {
+        this.whaleSpoutTimer += dt;
+        if (this.whaleSpoutTimer >= 2.0) {
+          this.whaleSpoutTimer = 0;
+          this.spawnBurst(this.mountedCreature.x + this.mountedCreature.facing * 48, this.mountedCreature.y - 68, '#80DEEA', 10);
+        }
+      }
     } else if (this.bobo.isRescuing) {
       const dx = this.diverX - this.bobo.x;
       const dy = this.diverY - this.bobo.y;
@@ -606,6 +707,9 @@ export class DiveGame {
         this.diverX = this.bobo.x;
         this.diverY = this.bobo.y - 30;
         this.diverAngle = -0.3;
+        if (Math.random() < 0.35 && this.burstParticles.length < 64) {
+          this.spawnBurst(this.bobo.x, this.bobo.y + 26, '#FF80AB', 2);
+        }
         if (this.diverY <= 150) {
           this.bobo.isRescuing = false;
           this.bobo.active = false;
@@ -620,25 +724,96 @@ export class DiveGame {
     } else {
       const maxSpd = this.state.getSwimSpeed();
       const moving = kx !== 0 || ky !== 0;
-      const accel = moving ? 8 : 5;
-      this.diverVx += (kx * maxSpd - this.diverVx) * Math.min(1, dt * accel);
-      this.diverVy += (ky * maxSpd - this.diverVy) * Math.min(1, dt * accel);
+
+      // v2.0 Underwater Fluid Dynamics: Anisotropic drag (forward vs lateral) + depth buoyancy + surface breaching
+      if (this.diverY < 140) {
+        // Breached above water surface: air gravity pulls back into ocean
+        this.diverVy += 520 * dt;
+        this.diverVx *= Math.exp(-0.8 * dt);
+        this.wasAboveSurface = true;
+      } else {
+        const fx = Math.cos(this.diverAngle) * (this.facingScale >= 0 ? 1 : -1);
+        const fy = Math.sin(this.diverAngle);
+        const nx = -fy;
+        const ny = fx;
+        const vPar = (this.diverVx * fx + this.diverVy * fy) * Math.exp(-2.4 * dt);
+        const vPerp = (this.diverVx * nx + this.diverVy * ny) * Math.exp(-5.8 * dt);
+        this.diverVx = vPar * fx + vPerp * nx + kx * maxSpd * 2.8 * dt;
+        this.diverVy = vPar * fy + vPerp * ny + ky * maxSpd * 2.8 * dt;
+
+        // Depth buoyancy gradient
+        if (this.diverY < 600) this.diverVy -= 14 * dt;
+        else if (this.diverY > 2800) this.diverVy += 10 * dt;
+        else if (!moving) this.diverVy += Math.sin(now * 0.0022) * 10 * dt;
+
+        // Hydrothermal Vent Bubble Elevator updrafts (width 110px, height 420px)
+        if (this.diverY > this.worldHeight - 520) {
+          for (let vx = 480; vx < this.worldWidth - 400; vx += 840) {
+            const dxv = Math.abs(this.diverX - vx);
+            if (dxv < 55) {
+              const falloff = 1 - dxv / 55;
+              this.diverVy = Math.max(-340, this.diverVy - 420 * falloff * dt);
+            }
+          }
+        }
+
+        // Clamp top speed smoothly
+        const spd = Math.hypot(this.diverVx, this.diverVy);
+        if (spd > maxSpd * 1.35) {
+          const s = (maxSpd * 1.35) / spd;
+          this.diverVx *= s;
+          this.diverVy *= s;
+        }
+
+        // Splash-down damping when re-entering water from a breach
+        if (this.wasAboveSurface && this.diverVy > 110 && this.splashCooldown <= 0) {
+          this.diverVy *= 0.45;
+          this.splashCooldown = 0.4;
+          this.sound.playBubble();
+          this.spawnBurst(this.diverX, 144, '#E0F7FA', 10);
+        }
+        this.wasAboveSurface = false;
+      }
+
       this.diverX += this.diverVx * dt;
       this.diverY += this.diverVy * dt;
+
+      const curSpeedRatio = Math.min(1.2, Math.hypot(this.diverVx, this.diverVy) / Math.max(1, maxSpd));
+      this.swimCycle += dt * (1.8 + curSpeedRatio * 8.2);
+      const maxPitch = (52 * Math.PI) / 180;
       if (moving) {
-        this.swimCycle += dt * 8.5;
-        const targetAng = Math.atan2(this.diverVy, Math.abs(this.diverVx));
-        this.diverAngle += (targetAng - this.diverAngle) * 0.18;
+        const rawAng = Math.atan2(this.diverVy, Math.max(40, Math.abs(this.diverVx)));
+        const targetAng = Math.max(-maxPitch, Math.min(maxPitch, rawAng));
+        this.diverAngle += (targetAng - this.diverAngle) * (1 - Math.exp(-10 * dt));
       } else {
-        this.diverAngle *= 0.85;
-        this.swimCycle += dt * 1.5;
-        if (this.diverY > 160) this.diverY += Math.sin(now / 650) * 8 * dt;
+        this.diverAngle *= Math.exp(-8 * dt);
       }
-      if (this.diverY <= 155) this.diverAngle *= 0.8;
+      if (this.diverY <= 155) this.diverAngle *= Math.exp(-10 * dt);
     }
 
     this.diverX = Math.max(80, Math.min(this.worldWidth - 80, this.diverX));
-    this.diverY = Math.max(140, Math.min(this.worldHeight - 110, this.diverY));
+    this.diverY = Math.max(105, Math.min(this.worldHeight - 110, this.diverY));
+
+    // Rhythmic world-space regulator exhaust bubbles (capped <= 96 total)
+    if (this.diverY > 165 && !this.bobo.isRescuing) {
+      const oxPctNow = this.oxygen / this.maxOxygen;
+      const interval = oxPctNow < 0.25 ? 0.85 : 1.4;
+      this.breathTimer += dt;
+      if (this.breathTimer >= interval) {
+        this.breathTimer = 0;
+        for (let k = 0; k < 3; k++) {
+          if (this.bubbles.length >= 96) break;
+          this.bubbles.push({
+            x: this.diverX + (this.facingScale >= 0 ? 34 : -34) + (Math.random() - 0.5) * 10,
+            y: this.diverY - 6 - k * 4,
+            r: 5.5 - k * 1.1,
+            speed: 1.9 + Math.random() * 0.8,
+            isOxygenPickup: false,
+            isDaveBreath: true,
+          });
+        }
+      }
+    }
 
     // Smooth cliff-ledge solid collision (exempt during dolphin rescue so rescue never snags)
     if (!this.bobo.isRescuing && !this.mountedCreature) {
@@ -750,9 +925,13 @@ export class DiveGame {
       if (ms.y < 150) ms.y = this.worldHeight - 60;
       else if (ms.y > this.worldHeight - 60) ms.y = 150;
     }
-    for (const b of this.bubbles) {
+    for (let i = this.bubbles.length - 1; i >= 0; i--) {
+      const b = this.bubbles[i];
       b.y -= b.speed * 60 * dt;
-      if (b.y < 140) {
+      if (b.isDaveBreath) {
+        b.x += Math.sin(now * 0.006 + i) * 14 * dt;
+        if (b.y < 142) { this.bubbles.splice(i, 1); continue; }
+      } else if (b.y < 140) {
         b.y = this.worldHeight - 50;
         b.x = Math.random() * this.worldWidth;
       }
@@ -760,9 +939,10 @@ export class DiveGame {
         const dx = this.diverX - b.x;
         const dy = this.diverY - b.y;
         const d = Math.hypot(dx, dy);
-        if (d > 1 && d < 140) {
-          b.x += (dx / d) * 190 * dt;
-          b.y += (dy / d) * 190 * dt;
+        if (d > 1 && d < 160) {
+          const pull = 420 * (1 - d / 160) + 120;
+          b.x += (dx / d) * pull * dt;
+          b.y += (dy / d) * pull * dt;
         }
         if (d < b.r + 52) {
           this.oxygen = Math.min(this.maxOxygen, this.oxygen + 25);
@@ -774,13 +954,15 @@ export class DiveGame {
       }
     }
 
-    // Active bubble bullets (dt-scaled, mild water drag, buoyancy rise, pop at surface)
+    // Active bubble bullets (dt-scaled, mild water drag, sinusoidal sway, buoyancy rise, pop at surface)
     const bubbleDrag = Math.pow(0.985, dt * 60);
     this.activeBubbles = this.activeBubbles.filter((bb) => {
       bb.lifeTime -= dt;
+      bb.age = (bb.age || 0) + dt;
       bb.vx *= bubbleDrag;
       bb.vy = bb.vy * bubbleDrag - 55 * dt;
-      bb.x += bb.vx * dt;
+      bb.radius = Math.min(30, bb.radius + 3.5 * dt);
+      bb.x += (bb.vx + Math.sin(bb.age * 12) * 35) * dt;
       bb.y += bb.vy * dt;
       if (bb.y <= 145) return false;
       for (const f of this.fishes) {
@@ -788,17 +970,22 @@ export class DiveGame {
           f.isSleeping = true;
           f.sleepTimer = 8;
           f.isAttacking = false;
+          f.telegraphTimer = 0;
+          f.chargeTimer = 0;
           this.sound.playBubble();
-          this.addFX(f.x, f.y - 45, '💤 催眠成功！按互動抱抱抓！', '#00E5FF', 28);
+          this.addFX(f.x, f.y - 45, '💤 💖', '#00E5FF', 28);
           return false;
         }
       }
       return bb.lifeTime > 0;
     });
 
-    // Fish AI & Auto-aim
+    // Fish AI & Wide-Cone Sticky Auto-Aim (18% hysteresis)
+    const prevTarget = this.targetFish;
     this.targetFish = null;
-    let nearestDist = this.state.getHarpoonRange();
+    const maxRange = this.state.getHarpoonRange();
+    let bestScore = maxRange;
+    const whaleRiding = this.mountedCreature && this.mountedCreature.species === 'BLUE_WHALE';
     for (const f of this.fishes) {
       if (f.isSleeping) {
         f.sleepTimer -= dt;
@@ -814,87 +1001,80 @@ export class DiveGame {
       if (f.cooldownTimer > 0) f.cooldownTimer = Math.max(0, f.cooldownTimer - dt);
       if (f.chompTimer > 0) f.chompTimer = Math.max(0, f.chompTimer - dt);
 
-      if (isDunk && !this.bobo.isRescuing && !this.mountedCreature && f.cooldownTimer <= 0) {
+      // Predators yield gently when player rides Blue Whale (within 260px)
+      if ((isShark || isDunk) && whaleRiding && sDist < 260 && sDist > 1) {
+        f.isAttacking = false;
+        f.telegraphTimer = 0;
+        f.chargeTimer = 0;
+        f.x -= (sdx / sDist) * 140 * dt;
+        f.y -= (sdy / sDist) * 90 * dt;
+        f.facing = sdx > 0 ? -1 : 1;
+        f.swimPhase += dt * f.swimSpeedMultiplier * 1.4;
+      } else if ((isDunk || isShark) && !this.bobo.isRescuing && !this.mountedCreature && f.cooldownTimer <= 0) {
+        const detectDist = isDunk ? 300 : 340;
+        const telegraphDur = isDunk ? 0.55 : 0.45;
+        const chargeDur = isDunk ? 1.6 : 2.2;
+        const chargeSpd = isDunk ? 135 : (f.species === 'GREAT_SHARK' ? 145 : 112);
+        const cooldownDur = isDunk ? 2.2 : 1.8;
         if (f.telegraphTimer > 0) {
-          // 0.55s friendly territorial warning: pause & snap scissor jaw twice
           f.telegraphTimer -= dt;
           f.facing = sdx > 0 ? 1 : -1;
           f.isAttacking = false;
           f.swimPhase += dt * f.swimSpeedMultiplier * 1.4;
-          if (f.telegraphTimer <= 0) {
-            f.chargeTimer = 1.6;
-          }
+          if (f.telegraphTimer <= 0) f.chargeTimer = chargeDur;
         } else if (f.chargeTimer > 0) {
           f.chargeTimer -= dt;
           f.isAttacking = true;
           f.facing = sdx > 0 ? 1 : -1;
           if (sDist > 1) {
-            f.x += (sdx / sDist) * 135 * dt;
-            f.y += (sdy / sDist) * 135 * dt;
+            f.x += (sdx / sDist) * chargeSpd * dt;
+            f.y += (sdy / sDist) * chargeSpd * dt;
           }
-          f.swimPhase += dt * f.swimSpeedMultiplier * 1.6;
+          f.swimPhase += dt * f.swimSpeedMultiplier * 1.7;
           if (sDist < f.bodyHeight * 0.62 + 34 && this.invincibleTimer <= 0) {
-            this.oxygen = Math.max(0, this.oxygen - 18);
+            const loss = isDunk ? 18 : (f.species === 'GREAT_SHARK' ? 22 : 14);
+            this.oxygen = Math.max(0, this.oxygen - loss);
             this.invincibleTimer = 1.6;
             this.screenShakeTimer = 0.32;
             this.hurtFlashTimer = 0.32;
             if (sDist > 1) {
               this.diverVx += (sdx / sDist) * 210;
               this.diverVy += (sdy / sDist) * 210;
-              f.x -= (sdx / sDist) * 36;
-              f.y -= (sdy / sDist) * 36;
+              f.x -= (sdx / sDist) * 42;
+              f.y -= (sdy / sDist) * 42;
             }
             f.chargeTimer = 0;
             f.isAttacking = false;
-            f.cooldownTimer = 2.2;
+            f.cooldownTimer = cooldownDur;
             this.sound.playHurt();
-            this.addFX(this.diverX, this.diverY - 50, '🛡️ 哎呀！被鐵甲鄧氏魚頂到了！', '#FFD54F', 28);
+            this.addFX(this.diverX, this.diverY - 50, isDunk ? '🛡️ 被鐵甲鄧氏魚頂了一下！' : '🫧 被鯊魚頂了一下！', '#FFD54F', 28);
             if (this.oxygen <= 0) this.triggerDolphinRescue();
           } else if (f.chargeTimer <= 0) {
             f.isAttacking = false;
-            f.cooldownTimer = 2.2;
+            f.cooldownTimer = cooldownDur;
           }
-        } else if (sDist < 300) {
-          f.telegraphTimer = 0.55;
+        } else if (sDist < detectDist) {
+          f.telegraphTimer = telegraphDur;
           f.facing = sdx > 0 ? 1 : -1;
         } else {
           f.isAttacking = false;
           f.swimPhase += dt * f.swimSpeedMultiplier;
           f.x += f.vx * 60 * dt;
-          f.y += Math.sin(f.swimPhase) * 1.4;
+          f.y += Math.sin(f.swimPhase) * 84 * dt;
           if (f.x < 90) { f.x = 90; f.vx = Math.abs(f.vx); f.facing = 1; }
           else if (f.x > this.worldWidth - 90) { f.x = this.worldWidth - 90; f.vx = -Math.abs(f.vx); f.facing = -1; }
-        }
-      } else if (isShark && sDist < 350 && !this.bobo.isRescuing && !this.mountedCreature) {
-        f.isAttacking = true;
-        f.facing = sdx > 0 ? 1 : -1;
-        const spd = f.species === 'GREAT_SHARK' ? 145 : 110;
-        f.x += (sdx / sDist) * spd * dt;
-        f.y += (sdy / sDist) * spd * dt;
-        f.swimPhase += dt * f.swimSpeedMultiplier * 1.8;
-        if (sDist < f.bodyHeight * 0.65 + 32 && this.invincibleTimer <= 0) {
-          const loss = f.species === 'GREAT_SHARK' ? 22 : 14;
-          this.oxygen = Math.max(0, this.oxygen - loss);
-          this.invincibleTimer = 1.6;
-          this.screenShakeTimer = 0.35;
-          this.hurtFlashTimer = 0.35;
-          this.diverVx += (sdx / sDist) * 220;
-          this.diverVy += (sdy / sDist) * 220;
-          this.sound.playHurt();
-          this.addFX(this.diverX, this.diverY - 50, '🫧 哎呀！被鯊魚頂了一下！', '#FFB74D', 30);
-          if (this.oxygen <= 0) this.triggerDolphinRescue();
         }
       } else {
         f.isAttacking = false;
         f.swimPhase += dt * f.swimSpeedMultiplier;
         f.x += f.vx * 60 * dt;
-        f.y += Math.sin(f.swimPhase) * 1.4;
+        f.y += Math.sin(f.swimPhase) * 84 * dt;
         if (f.x < 70) { f.x = 70; f.vx = Math.abs(f.vx); f.facing = 1; }
         else if (f.x > this.worldWidth - 70) { f.x = this.worldWidth - 70; f.vx = -Math.abs(f.vx); f.facing = -1; }
       }
       // Keep all marine creatures strictly below water surface and above seabed
       f.y = Math.max(175, Math.min(this.worldHeight - 125, f.y));
-      // Turn away from solid cliff ledges (fixed typo: f.length instead of undefined f.bodyWidth)
+      // Turn away from solid cliff ledges
       for (const cl of this.cliffLedges) {
         if (f.y > cl.y - f.bodyHeight * 0.4 && f.y < cl.y + cl.h + f.bodyHeight * 0.4) {
           if (cl.left && f.x < cl.w * 0.88 + f.length * 0.35) {
@@ -909,9 +1089,22 @@ export class DiveGame {
         }
       }
 
-      if (f.value > 0 && sDist < nearestDist) {
-        nearestDist = sDist;
-        this.targetFish = f;
+      // Wide-Cone Sticky Auto-Aim (±105° front preferred, rear < 180px allowed, 0.82 hysteresis)
+      if (f.value > 0 && sDist < maxRange) {
+        const toFx = f.x - this.diverX;
+        const toFy = f.y - this.diverY;
+        const faceDir = this.targetFacingScale >= 0 ? 1 : -1;
+        const cosA = (toFx * faceDir) / Math.max(1, sDist);
+        let penalty = -1;
+        if (cosA >= -0.2588) penalty = 1.0; // within ±105°
+        else if (sDist < 180) penalty = 1.35; // close behind
+        if (penalty > 0) {
+          const score = sDist * penalty * (f === prevTarget ? 0.82 : 1.0);
+          if (score < bestScore) {
+            bestScore = score;
+            this.targetFish = f;
+          }
+        }
       }
     }
 
@@ -947,6 +1140,7 @@ export class DiveGame {
               break;
             }
             this.hookedFish = f;
+            this.harpoonRopeAmp = 18;
             this.harpoonState = 'REELING';
             break;
           }
@@ -975,7 +1169,11 @@ export class DiveGame {
         }
         this.harpoonState = 'IDLE';
       } else {
-        const reelStep = Math.min(d, 1560 * dt);
+        const weightKg = this.hookedFish ? (this.hookedFish.weightKg || 1) : 1;
+        const reelSpd = this.hookedFish
+          ? Math.max(720, Math.min(1520, 1520 / (1 + Math.log10(1 + weightKg) * 0.30)))
+          : 1560;
+        const reelStep = Math.min(d, reelSpd * dt);
         this.harpoonX += (dx / d) * reelStep;
         this.harpoonY += (dy / d) * reelStep;
         if (this.hookedFish) {
@@ -1043,17 +1241,36 @@ export class DiveGame {
       ctx.fillRect(0, 0, w, Math.max(0, 145 - this.cameraY));
     }
 
-    // Parallax Far Canyon Walls (0.4x scroll)
+    // 3-Layer Parallax Far Silhouettes (0.30x far ridge + mini schools, 0.60x mid wreck/arch)
     ctx.save();
-    ctx.translate(-this.cameraX * 0.4, -this.cameraY * 0.4);
-    ctx.fillStyle = 'rgba(0, 26, 51, 0.22)';
+    ctx.translate(-this.cameraX * 0.30, -this.cameraY * 0.30);
+    ctx.fillStyle = 'rgba(0, 26, 51, 0.24)';
     ctx.beginPath();
     ctx.moveTo(0, 140); ctx.lineTo(440, 760); ctx.lineTo(290, 1850); ctx.lineTo(520, 3150); ctx.lineTo(360, this.worldHeight); ctx.lineTo(0, this.worldHeight);
     ctx.closePath(); ctx.fill();
-
     ctx.beginPath();
     ctx.moveTo(this.worldWidth, 140); ctx.lineTo(this.worldWidth - 420, 820); ctx.lineTo(this.worldWidth - 260, 1950); ctx.lineTo(this.worldWidth - 500, 3100); ctx.lineTo(this.worldWidth - 340, this.worldHeight); ctx.lineTo(this.worldWidth, this.worldHeight);
     ctx.closePath(); ctx.fill();
+    // Distant mini fish schools
+    ctx.fillStyle = 'rgba(0, 40, 80, 0.22)';
+    for (let s = 0; s < 3; s++) {
+      const sx = ((now * 0.018 * (s % 2 === 0 ? 1 : -1) + s * 680) % 2400 + 2400) % 2400;
+      const sy = 340 + s * 520;
+      for (let m = 0; m < 5; m++) {
+        ctx.beginPath(); ctx.ellipse(sx + m * 18, sy + (m % 2) * 10, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // Mid-depth 0.60x Coral Arch & Distant Wreck Mast Silhouette
+    ctx.save();
+    ctx.translate(-this.cameraX * 0.60, -this.cameraY * 0.60);
+    ctx.fillStyle = 'rgba(0, 20, 44, 0.20)';
+    ctx.beginPath();
+    ctx.arc(980, 1480, 220, Math.PI, 0);
+    ctx.lineTo(1200, 1780); ctx.lineTo(1120, 1780);
+    ctx.arc(980, 1480, 140, 0, Math.PI, true);
+    ctx.lineTo(760, 1780); ctx.closePath(); ctx.fill();
     ctx.restore();
 
     ctx.save();
@@ -1061,16 +1278,20 @@ export class DiveGame {
     const shakeY = this.screenShakeTimer > 0 ? (Math.random() - 0.5) * 14 : 0;
     ctx.translate(-this.cameraX + shakeX, -this.cameraY + shakeY);
 
-    // Drifting Shallow Water Caustic Ovals
-    if (this.cameraY < 750) {
-      const causticFade = Math.max(0, 1 - this.cameraY / 750);
-      ctx.fillStyle = `rgba(178, 235, 242, ${(0.10 * causticFade).toFixed(3)})`;
-      for (let c = 0; c < 6; c++) {
-        const cx = 240 + c * 380 + Math.sin(now / 1400 + c) * 65;
-        const cy = 220 + (c % 3) * 140 + Math.cos(now / 1100 + c) * 24;
+    // Dual-Phase Shallow Water Caustic Light Ribbons (y: 140~850)
+    if (this.cameraY < 850) {
+      const causticFade = Math.max(0, 1 - this.cameraY / 850);
+      ctx.strokeStyle = `rgba(178, 235, 242, ${(0.13 * causticFade).toFixed(3)})`;
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      for (let band = 0; band < 2; band++) {
+        const baseY = 230 + band * 165;
         ctx.beginPath();
-        ctx.ellipse(cx, cy, 110, 22, 0, 0, Math.PI * 2);
-        ctx.fill();
+        for (let rx = Math.max(0, this.cameraX - 80); rx <= Math.min(this.worldWidth, this.cameraX + w + 80); rx += 70) {
+          const ry = baseY + Math.sin(rx * 0.012 + now * 0.0014 + band * 2.1) * 26 + Math.cos(rx * 0.022 - now * 0.0018) * 14;
+          if (rx <= Math.max(0, this.cameraX - 80)) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+        }
+        ctx.stroke();
       }
     }
 
@@ -1245,16 +1466,33 @@ export class DiveGame {
       ctx.beginPath(); ctx.arc(gc.x, gc.y, gc.size * 0.45 * p, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Kelp forest
-    for (const kp of this.kelpForest) {
-      const wave = Math.sin(now / 850 + kp.phaseOffset) * 32;
-      ctx.strokeStyle = kp.isBackground ? 'rgba(0,77,64,0.55)' : 'rgba(0,121,107,0.82)';
-      ctx.lineWidth = 14;
-      ctx.lineCap = 'round';
+    // Sunken Shipwreck & Coral Reef Shelves (replaces old floating kelpForest)
+    if (this.shipwreck && this.shipwreck.y > this.cameraY - 260 && this.shipwreck.y < this.cameraY + h + 260) {
+      const sw = this.shipwreck;
+      ctx.save();
+      ctx.translate(sw.x, sw.y);
+      ctx.rotate(-0.08);
+      ctx.fillStyle = '#3E2723';
       ctx.beginPath();
-      ctx.moveTo(kp.baseX, kp.baseY);
-      ctx.quadraticCurveTo(kp.baseX + wave * 0.5, kp.baseY - kp.height * 0.5, kp.baseX + wave, kp.baseY - kp.height);
-      ctx.stroke();
+      ctx.moveTo(-180, -30); ctx.lineTo(180, -24); ctx.lineTo(135, 58); ctx.lineTo(-145, 58); ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#4E342E';
+      ctx.fillRect(-10, -145, 16, 120);
+      ctx.fillRect(-72, -105, 140, 12);
+      ctx.fillStyle = 'rgba(255, 213, 79, 0.35)';
+      for (let p = -2; p <= 2; p++) {
+        ctx.beginPath(); ctx.arc(p * 48, 12, 9, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    for (const cs of this.coralShelves || []) {
+      if (cs.y < this.cameraY - 120 || cs.y > this.cameraY + h + 120) continue;
+      ctx.fillStyle = '#102A43';
+      ctx.beginPath(); ctx.ellipse(cs.x, cs.y + 12, cs.width * 0.52, 22, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = cs.color + 'AA';
+      for (let b = -2; b <= 2; b++) {
+        ctx.beginPath(); ctx.arc(cs.x + b * (cs.width * 0.16), cs.y - 4 - (b % 2 === 0 ? 10 : 4), 16, 0, Math.PI * 2); ctx.fill();
+      }
     }
 
     // Treasure chests
@@ -1308,43 +1546,70 @@ export class DiveGame {
       ctx.beginPath(); ctx.arc(bb.x, bb.y, bb.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
-    // Bobo dolphin (vector-drawn with facing flip)
+    // Bobo dolphin (streamlined pink-belly dolphin synced with Android)
     if (this.bobo.active || this.bobo.isRescuing) {
       ctx.save();
       ctx.translate(this.bobo.x, this.bobo.y);
       ctx.scale(this.bobo.x > this.diverX ? -1 : 1, 1);
-      const boboWave = Math.sin(now / 220) * 4;
-      ctx.fillStyle = '#4FC3F7';
-      ctx.beginPath(); ctx.ellipse(0, 0, 32, 16, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#E1F5FE';
-      ctx.beginPath(); ctx.ellipse(2, 6, 22, 8, 0, 0, Math.PI); ctx.fill();
-      // Dorsal fin & tail
+      const boboWave = Math.sin(now / 200) * 6;
       ctx.fillStyle = '#29B6F6';
-      ctx.beginPath(); ctx.moveTo(-4, -14); ctx.quadraticCurveTo(-12, -30, -18, -12); ctx.closePath(); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(-42, -12 + boboWave); ctx.lineTo(-42, 12 + boboWave); ctx.closePath(); ctx.fill();
-      // Eye & smile
+      ctx.beginPath();
+      ctx.moveTo(46, 2);
+      ctx.quadraticCurveTo(18, -24, -26, -10);
+      ctx.lineTo(-48, -16 + boboWave);
+      ctx.lineTo(-38, 0);
+      ctx.lineTo(-48, 16 + boboWave);
+      ctx.lineTo(-26, 12);
+      ctx.quadraticCurveTo(14, 22, 46, 2);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#FFCDD2';
+      ctx.beginPath(); ctx.ellipse(4, 8, 24, 9, 0, 0, Math.PI); ctx.fill();
+      ctx.fillStyle = '#0288D1';
+      ctx.beginPath(); ctx.moveTo(-2, -16); ctx.quadraticCurveTo(-12, -34, -20, -12); ctx.closePath(); ctx.fill();
       ctx.fillStyle = '#1A237E';
-      ctx.beginPath(); ctx.arc(16, -3, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(20, -4, 3.2, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#1A237E'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(18, 2, 6, 0.1, 1.4); ctx.stroke();
+      ctx.beginPath(); ctx.arc(24, 2, 7, 0.1, 1.35); ctx.stroke();
       ctx.restore();
     }
 
-    // Aim reticle
+    // Rotating 4-Arc Aim Reticle + Soft Guide Line
     if (this.targetFish && this.harpoonState === 'IDLE') {
-      ctx.strokeStyle = this.currentWeapon === 'HARPOON' ? 'rgba(255,215,0,0.85)' : 'rgba(0,229,255,0.85)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(this.targetFish.x, this.targetFish.y, this.targetFish.bodyHeight * 0.72, 0, Math.PI * 2);
-      ctx.stroke();
+      const col = this.currentWeapon === 'HARPOON' ? 'rgba(255,215,0,0.88)' : 'rgba(0,229,255,0.88)';
+      ctx.save();
+      ctx.strokeStyle = this.currentWeapon === 'HARPOON' ? 'rgba(255,215,0,0.32)' : 'rgba(0,229,255,0.32)';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath(); ctx.moveTo(this.diverX + this.facingScale * 44, this.diverY + 8); ctx.lineTo(this.targetFish.x, this.targetFish.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 3.5;
+      const r = this.targetFish.bodyHeight * 0.72;
+      const rot = now * 0.0025;
+      for (let a = 0; a < 4; a++) {
+        const start = rot + a * (Math.PI / 2);
+        ctx.beginPath(); ctx.arc(this.targetFish.x, this.targetFish.y, r, start, start + 0.9); ctx.stroke();
+      }
+      ctx.restore();
     }
 
-    // Harpoon line
+    // Elastic Oscillating Bezier Harpoon Rope & Tip
     if (this.harpoonState !== 'IDLE') {
+      const mx = (this.harpoonStartX + this.harpoonX) * 0.5;
+      const my = (this.harpoonStartY + this.harpoonY) * 0.5;
+      const rdx = this.harpoonX - this.harpoonStartX;
+      const rdy = this.harpoonY - this.harpoonStartY;
+      const rlen = Math.max(1, Math.hypot(rdx, rdy));
+      const perpX = -rdy / rlen;
+      const perpY = rdx / rlen;
+      const vib = this.harpoonRopeAmp * Math.sin(now * 0.035);
       ctx.strokeStyle = '#FFDF00'; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(this.harpoonStartX, this.harpoonStartY); ctx.lineTo(this.harpoonX, this.harpoonY); ctx.stroke();
-      ctx.fillStyle = '#E0E0E0';
-      ctx.beginPath(); ctx.arc(this.harpoonX, this.harpoonY, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(this.harpoonStartX, this.harpoonStartY);
+      ctx.quadraticCurveTo(mx + perpX * vib, my + perpY * vib, this.harpoonX, this.harpoonY);
+      ctx.stroke();
+      ctx.fillStyle = this.state.harpoonLevel >= 6 ? '#FFD700' : '#E0E0E0';
+      ctx.beginPath(); ctx.arc(this.harpoonX, this.harpoonY, 8.5, 0, Math.PI * 2); ctx.fill();
     }
 
     // Kid Diver
@@ -1411,74 +1676,128 @@ export class DiveGame {
     ctx.scale(this.facingScale, 1);
     ctx.rotate(this.diverAngle);
 
-    // Headlamp cone (cached gradient)
+    // Dual-layer Headlamp Cone (±28° flood + ±14° bright core, color temp scales with lightLevel)
     const lr = this.state.getLightRadius();
-    if (!this._cachedConeGrad || this._cachedConeLr !== lr) {
+    const lLvl = this.state.lightLevel || 1;
+    if (!this._cachedConeGrad || this._cachedConeLr !== lr || this._cachedConeLvl !== lLvl) {
       this._cachedConeLr = lr;
+      this._cachedConeLvl = lLvl;
       const coneGrad = ctx.createRadialGradient(45, 0, 5, 45, 0, lr);
-      coneGrad.addColorStop(0, 'rgba(255,253,231,0.45)');
-      coneGrad.addColorStop(0.55, 'rgba(255,224,130,0.14)');
+      coneGrad.addColorStop(0, lLvl >= 6 ? 'rgba(224,247,250,0.48)' : 'rgba(255,253,231,0.45)');
+      coneGrad.addColorStop(0.55, lLvl >= 6 ? 'rgba(128,222,234,0.16)' : 'rgba(255,224,130,0.14)');
       coneGrad.addColorStop(1, 'rgba(0,0,0,0)');
       this._cachedConeGrad = coneGrad;
     }
     ctx.fillStyle = this._cachedConeGrad;
     ctx.beginPath();
-    ctx.moveTo(42, -8); ctx.lineTo(lr, -lr * 0.35); ctx.lineTo(lr, lr * 0.35); ctx.closePath();
+    ctx.moveTo(42, -8); ctx.lineTo(lr, -lr * 0.42); ctx.lineTo(lr, lr * 0.42); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(42, -5); ctx.lineTo(lr * 0.85, -lr * 0.18); ctx.lineTo(lr * 0.85, lr * 0.18); ctx.closePath();
     ctx.fill();
 
-    // Articulated 2-joint kicking legs + ribbed flippers
+    // Articulated 2-joint kicking legs + Lv.1~8 Evolving Flippers
     const k1 = Math.sin(this.swimCycle) * 14;
     const k2 = Math.sin(this.swimCycle + Math.PI) * 14;
+    const spdLvl = this.state.speedLevel || 1;
+    const finC1 = spdLvl >= 6 ? '#00E5FF' : (spdLvl >= 3 ? '#29B6F6' : '#FF6D00');
+    const finC2 = spdLvl >= 6 ? '#FFD700' : (spdLvl >= 3 ? '#FFD54F' : '#FF8500');
     ctx.strokeStyle = '#01579B'; ctx.lineWidth = 8; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(-22, -10); ctx.lineTo(-42, -12 + k1 * 0.45); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(-22, 10); ctx.lineTo(-42, 12 + k2 * 0.45); ctx.stroke();
-    ctx.fillStyle = '#FF6D00';
-    ctx.beginPath(); ctx.moveTo(-40, -12 + k1 * 0.45); ctx.lineTo(-74, -22 + k1); ctx.lineTo(-68, -4 + k1 * 0.7); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#FF8500';
-    ctx.beginPath(); ctx.moveTo(-40, 12 + k2 * 0.45); ctx.lineTo(-74, 22 + k2); ctx.lineTo(-68, 4 + k2 * 0.7); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = finC1;
+    ctx.beginPath(); ctx.moveTo(-40, -12 + k1 * 0.45); ctx.lineTo(-76, -24 + k1); ctx.lineTo(-68, -4 + k1 * 0.7); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = finC2;
+    ctx.beginPath(); ctx.moveTo(-40, 12 + k2 * 0.45); ctx.lineTo(-76, 24 + k2); ctx.lineTo(-68, 4 + k2 * 0.7); ctx.closePath(); ctx.fill();
 
-    // Twin tanks + valve & wetsuit
+    // Lv.1~8 Evolving Oxygen Tank + Wetsuit
+    const oxLvl = this.state.oxygenLevel || 1;
     ctx.fillStyle = '#455A64';
     ctx.fillRect(-32, -26, 10, 6);
-    ctx.fillStyle = '#FFD166';
-    this.roundRect(ctx, -36, -22, 18, 44, 7); ctx.fill();
+    if (oxLvl >= 6) {
+      ctx.fillStyle = '#ECEFF1';
+      this.roundRect(ctx, -40, -24, 22, 48, 9); ctx.fill();
+      ctx.fillStyle = '#00E5FF';
+      ctx.fillRect(-35, -14, 6, 28);
+    } else if (oxLvl >= 3) {
+      ctx.fillStyle = '#1565C0';
+      this.roundRect(ctx, -38, -23, 20, 46, 8); ctx.fill();
+      ctx.fillStyle = '#FFD700';
+      ctx.fillRect(-38, -5, 20, 10);
+    } else {
+      ctx.fillStyle = '#FFD166';
+      this.roundRect(ctx, -36, -22, 18, 44, 7); ctx.fill();
+    }
     ctx.fillStyle = '#0077BE';
     this.roundRect(ctx, -24, -24, 50, 48, 16); ctx.fill();
 
     // Big Q-version Kid Portrait inside Scuba Helmet
+    const oxPct = this.oxygen / this.maxOxygen;
     ctx.fillStyle = 'rgba(0,229,255,0.22)';
     ctx.beginPath(); ctx.arc(32, -20, 58, 0, Math.PI * 2); ctx.fill();
     if (this.kidHeadLoaded) {
       ctx.drawImage(this.kidHeadImg, -22, -74, 108, 108);
     }
-    ctx.strokeStyle = this.mountedCreature ? '#FFD700' : 'rgba(128,222,234,0.88)';
+    const helmetStroke = this.mountedCreature ? '#FFD700' : (oxPct < 0.25 ? '#FFB74D' : 'rgba(128,222,234,0.88)');
+    ctx.strokeStyle = helmetStroke;
     ctx.lineWidth = 4.5;
     ctx.beginPath(); ctx.arc(32, -20, 58, 0, Math.PI * 2); ctx.stroke();
 
-    // 3D Glass Highlight Arc + periodic regulator exhaust bubbles (underwater only)
+    // Celebrate Golden Star Halo
+    if (this.avatarCelebrateTimer > 0) {
+      ctx.strokeStyle = 'rgba(255,215,0,0.75)';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.arc(32, -20, 66, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // Low-O2 cute sweat drop inside visor corner
+    if (oxPct < 0.25) {
+      ctx.fillStyle = '#80DEEA';
+      ctx.beginPath();
+      ctx.moveTo(64, -36); ctx.quadraticCurveTo(72, -24, 64, -20); ctx.quadraticCurveTo(56, -24, 64, -36);
+      ctx.fill();
+    }
+
+    // Evolving Top Headlamp Housing
+    ctx.fillStyle = lLvl >= 5 ? '#FFD700' : '#455A64';
+    this.roundRect(ctx, 22, -84, 22, 11, 4); ctx.fill();
+    ctx.fillStyle = lLvl >= 6 ? '#80DEEA' : '#FFF59D';
+    ctx.beginPath(); ctx.arc(44, -78, lLvl >= 5 ? 7 : 5, 0, Math.PI * 2); ctx.fill();
+
+    // 3D Glass Highlight Arc
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 3.5;
     ctx.beginPath(); ctx.arc(32, -20, 48, Math.PI * 1.14, Math.PI * 1.46); ctx.stroke();
-    if (this.diverY > 165) {
-      for (let rb = 0; rb < 3; rb++) {
-        const rise = ((now / 22 + rb * 26) % 78);
-        ctx.fillStyle = `rgba(224, 247, 250, ${(0.55 - rise / 150).toFixed(2)})`;
-        ctx.beginPath(); ctx.arc(12 - rb * 4 + Math.sin(rise * 0.12) * 5, -52 - rise, 3.5 - rise * 0.025, 0, Math.PI * 2); ctx.fill();
-      }
-    }
 
-    // Gloved arm + sculpted Weapon
+    // Gloved arm + Lv.1~8 Evolving Weapon
+    const hLvl = this.state.harpoonLevel || 1;
     ctx.strokeStyle = '#0288D1'; ctx.lineWidth = 8; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(6, 14); ctx.lineTo(22, 12); ctx.stroke();
     ctx.fillStyle = '#FFD54F';
     ctx.beginPath(); ctx.arc(22, 12, 5.5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = this.currentWeapon === 'HARPOON' ? '#455A64' : '#00E5FF';
-    this.roundRect(ctx, 18, 5, 36, 11, 4); ctx.fill();
-    // Sculpted harpoon tip / bubble-gun nozzle
-    ctx.fillStyle = this.currentWeapon === 'HARPOON' ? '#CFD8DC' : '#80DEEA';
-    ctx.beginPath(); ctx.moveTo(54, 4); ctx.lineTo(65, 10.5); ctx.lineTo(54, 17); ctx.closePath(); ctx.fill();
+    if (this.currentWeapon === 'HARPOON') {
+      ctx.fillStyle = hLvl >= 6 ? '#FFB300' : (hLvl >= 3 ? '#1565C0' : '#455A64');
+      this.roundRect(ctx, 18, 5, 36, 11, 4); ctx.fill();
+      ctx.fillStyle = hLvl >= 6 ? '#FFF59D' : '#CFD8DC';
+      ctx.beginPath(); ctx.moveTo(54, 4); ctx.lineTo(67, 10.5); ctx.lineTo(54, 17); ctx.closePath(); ctx.fill();
+      if (hLvl >= 6) {
+        // Golden Trident prongs
+        ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(54, 4); ctx.lineTo(63, 0); ctx.moveTo(54, 17); ctx.lineTo(63, 21); ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = '#00E5FF';
+      this.roundRect(ctx, 18, 4, 34, 13, 5); ctx.fill();
+      ctx.fillStyle = '#FF4081';
+      ctx.beginPath(); ctx.arc(48, 10.5, 6, 0, Math.PI * 2); ctx.fill();
+    }
 
     if (this.mountedCreature) {
+      if (this.mountedCreature.species === 'TURTLE') {
+        ctx.strokeStyle = 'rgba(105, 240, 174, 0.72)';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.arc(0, 0, 56, 0, Math.PI * 2); ctx.stroke();
+      }
       ctx.fillStyle = '#FF80AB';
       ctx.font = 'bold 20px sans-serif';
       ctx.fillText('♥', -8, -54);
@@ -1492,7 +1811,37 @@ export class DiveGame {
       ctx.strokeStyle = 'rgba(128,222,234,0.85)';
       ctx.lineWidth = 4;
       ctx.beginPath(); ctx.arc(this.diverX, this.diverY - 8, 80 * pulse, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // Cute orbiting dizzy stars at top of helmet
+      ctx.fillStyle = '#FFD700';
+      ctx.font = '18px sans-serif';
+      ctx.textAlign = 'center';
+      for (let st = 0; st < 3; st++) {
+        const ang = now * 0.006 + st * ((Math.PI * 2) / 3);
+        ctx.fillText('⭐', this.diverX + Math.cos(ang) * 38, this.diverY - 82 + Math.sin(ang) * 10);
+      }
+      ctx.textAlign = 'left';
     }
+  }
+
+  getActionContext() {
+    if (this.mountedCreature) return { icon: '⬇️', bg: 'rgba(67,160,71,0.92)' };
+    if (this.bobo.active && !this.bobo.isRescuing && this.oxygen / this.maxOxygen < 0.25) {
+      return { icon: '🐬', bg: 'rgba(255,64,129,0.94)' };
+    }
+    for (const c of this.treasureChests) {
+      if (!c.opened && Math.hypot(this.diverX - c.x, this.diverY - c.y) < 140) return { icon: '🎁', bg: 'rgba(255,152,0,0.94)' };
+    }
+    for (const pc of this.pearlClams) {
+      if (pc.hasPearl && Math.sin(pc.openCycle) > 0.35 && Math.hypot(this.diverX - pc.x, this.diverY - pc.y) < 120) return { icon: '🦪', bg: 'rgba(171,71,188,0.94)' };
+    }
+    for (const f of this.fishes) {
+      if (f.isSleeping && Math.hypot(this.diverX - f.x, this.diverY - f.y) < 120) return { icon: '💖', bg: 'rgba(236,64,122,0.94)' };
+      if (f.species === 'TURTLE' && Math.hypot(this.diverX - f.x, this.diverY - f.y) < 130) return { icon: '🐢', bg: 'rgba(67,160,71,0.94)' };
+      if (f.species === 'BLUE_WHALE' && Math.hypot(this.diverX - f.x, this.diverY - f.y) < 180) return { icon: '🐋', bg: 'rgba(3,155,229,0.94)' };
+    }
+    return this.currentWeapon === 'HARPOON'
+      ? { icon: '🎯', bg: 'rgba(255,179,0,0.90)' }
+      : { icon: '🫧', bg: 'rgba(0,184,212,0.90)' };
   }
 
   renderNearbyPrompt(ctx, now) {
@@ -1505,6 +1854,13 @@ export class DiveGame {
       for (const c of this.treasureChests) {
         if (!c.opened && Math.hypot(this.diverX - c.x, this.diverY - c.y) < 140) {
           prompt = '🎁 點一下開寶箱!'; px = c.x; py = c.y - 75; bg = '#FF9800'; break;
+        }
+      }
+      if (!prompt) {
+        for (const pc of this.pearlClams) {
+          if (pc.hasPearl && Math.sin(pc.openCycle) > 0.35 && Math.hypot(this.diverX - pc.x, this.diverY - pc.y) < 120) {
+            prompt = '🦪 點一下拿珍珠!'; px = pc.x; py = pc.y - 68; bg = '#AB47BC'; break;
+          }
         }
       }
       if (!prompt) {
@@ -1541,7 +1897,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.9', w - 14, h - 12);
+    ctx.fillText('v2.0', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {
@@ -1639,24 +1995,38 @@ export class DiveGame {
     ctx.fillStyle = this.isTouchJoystickActive ? '#00E5FF' : 'rgba(255,255,255,0.6)';
     ctx.beginPath(); ctx.arc(kx, ky, 30 * pulse, 0, Math.PI * 2); ctx.fill();
 
-    // Bottom-right Action & Switch Buttons
+    // Bottom-right Context-Aware Action, Switch & One-Tap Surface Ascent Buttons
     const actR = 54 * Math.max(0.78, s);
     const actCx = w - 26 - actR;
     const actCy = h - 28 - actR;
-    ctx.fillStyle = isHarpoon ? 'rgba(255,179,0,0.88)' : 'rgba(0,184,212,0.88)';
+    const actCtx = this.getActionContext();
+    ctx.fillStyle = actCtx.bg;
     ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.arc(actCx, actCy, this.isTouchActionPressed ? actR * 0.9 : actR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#FFFFFF'; ctx.font = `${Math.round(actR * 0.72)}px sans-serif`;
-    ctx.fillText(isHarpoon ? '🎯' : '🫧', actCx, actCy + actR * 0.25);
+    ctx.fillText(actCtx.icon, actCx, actCy + actR * 0.25);
 
     const swR = 36 * Math.max(0.78, s);
-    const swCx = actCx - actR - 24 - swR;
+    const swCx = actCx - actR - 22 - swR;
     const swCy = h - 28 - swR;
     ctx.fillStyle = 'rgba(0,34,68,0.85)';
     ctx.strokeStyle = '#48CAE4'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(swCx, swCy, swR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.font = `${Math.round(swR * 0.72)}px sans-serif`;
     ctx.fillText('🔄', swCx, swCy + swR * 0.26);
+
+    // Floating One-Tap Surface Ascent / Bobo Rescue Bubble (O2 < 30% or depth > 120m)
+    if ((oxPercent < 0.30 || depthMeters > 120) && !this.bobo.isRescuing) {
+      const upR = 34 * Math.max(0.78, s);
+      const upCx = actCx;
+      const upCy = actCy - actR - 18 - upR;
+      const breath = 1 + 0.06 * Math.sin(now * 0.0025);
+      ctx.fillStyle = oxPercent < 0.25 ? 'rgba(255,64,129,0.92)' : (this.autoSurfaceActive ? 'rgba(0,229,255,0.92)' : 'rgba(2,136,209,0.88)');
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(upCx, upCy, upR * breath, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.font = `${Math.round(upR * 0.76)}px sans-serif`;
+      ctx.fillText(oxPercent < 0.25 ? '🐬' : '⬆️', upCx, upCy + upR * 0.28);
+    }
 
     // Touch ripples
     for (const tr of this.touchRipples) {

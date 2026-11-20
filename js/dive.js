@@ -1,3 +1,5 @@
+import { renderCreature } from './creatureRenderer.js';
+
 export class DiveGame {
   constructor(canvas, state, sound, callbacks) {
     this.canvas = canvas;
@@ -155,20 +157,22 @@ export class DiveGame {
     this.spawnSpecies('NEON_JELLYFISH', '七彩霓虹水母', 140, 3.2, 10, 3400, 6500, '#E040FB', '#00E5FF', 64, 64, 0.7);
     this.spawnSpecies('JELLYFISH', '深海水母', 65, 2.5, 8, 1500, 4600, '#CE93D8', '#7B1FA2', 58, 58, 0.65);
 
-    // Random Prehistoric Marine Reptiles (古生代/中生代海洋恐龍隨機出現，延伸至 6600 深海海溝)
+    // Prehistoric Marine Reptiles (v1.9 1-Second Silhouette Palette) + Dunkleosteus
     const dinos = [
-      ['LIOPLEURODON', '滑齒龍', 520, 620, 2200, 6400, '#37474F', '#80CBC4', 240, 88, 1.35],
-      ['MOSASAURUS', '滄龍', 600, 850, 2800, 6600, '#263238', '#4DD0E1', 270, 94, 1.4],
-      ['PLESIOSAURUS', '蛇頸龍', 420, 340, 1400, 4800, '#00695C', '#A5D6A7', 210, 76, 1.1],
-      ['ELASMOSAURUS', '薄片龍', 460, 380, 1800, 5600, '#1565C0', '#81D4FA', 235, 74, 1.05],
-      ['NOTHOSAURUS', '幻龍', 360, 210, 1000, 3600, '#558B2F', '#DCE775', 185, 64, 1.25],
-      ['ICHTHYOSAURUS', '魚龍', 340, 190, 1100, 4200, '#283593', '#90CAF9', 175, 68, 1.65],
+      ['LIOPLEURODON', '滑齒龍', 520, 620, 2200, 6400, '#455A64', '#FF8A65', 240, 92, 1.35],
+      ['MOSASAURUS', '滄龍', 600, 850, 2800, 6600, '#006064', '#26C6DA', 275, 92, 1.4],
+      ['PLESIOSAURUS', '蛇頸龍', 420, 340, 1400, 4800, '#00897B', '#FFF176', 215, 78, 1.1],
+      ['ELASMOSAURUS', '薄片龍', 460, 380, 1800, 5600, '#1E88E5', '#80D8FF', 235, 74, 1.05],
+      ['NOTHOSAURUS', '幻龍', 360, 210, 1000, 3600, '#689F38', '#FFEE58', 190, 66, 1.25],
+      ['ICHTHYOSAURUS', '魚龍', 340, 190, 1100, 4200, '#3949AB', '#80DEEA', 180, 70, 1.65],
     ];
     for (const d of dinos) {
-      if (Math.random() < 0.75) {
+      if (Math.random() < 0.85) {
         this.spawnSpecies(d[0], d[1], d[2], d[3], 1 + (Math.random() < 0.4 ? 1 : 0), d[4], d[5], d[6], d[7], d[8], d[9], d[10]);
       }
     }
+    // Guaranteed 1-2 Dunkleosteus (鐵甲鄧氏魚) in deep trench & abyssal zone
+    this.spawnSpecies('DUNKLEOSTEUS', '鐵甲鄧氏魚', 550, 540, 1 + (Math.random() < 0.5 ? 1 : 0), 2400, 5800, '#5D4037', '#FFB300', 255, 108, 1.15);
 
     // Underwater Cliff Ledges, Anchored Swaying Kelp & Glowing Minerals
     this.cliffLedges = [];
@@ -235,6 +239,10 @@ export class DiveGame {
         swimPhase: Math.random() * 6.28,
         swimSpeedMultiplier: 4 + Math.random() * 3,
         isAttacking: false,
+        telegraphTimer: 0,
+        chargeTimer: 0,
+        cooldownTimer: 0,
+        chompTimer: 0,
         isSleeping: false,
         sleepTimer: 0,
       });
@@ -799,10 +807,65 @@ export class DiveGame {
         continue;
       }
       const isShark = f.species === 'REEF_SHARK' || f.species === 'GREAT_SHARK';
+      const isDunk = f.species === 'DUNKLEOSTEUS';
       const sdx = this.diverX - f.x;
       const sdy = this.diverY - f.y;
       const sDist = Math.hypot(sdx, sdy);
-      if (isShark && sDist < 350 && !this.bobo.isRescuing && !this.mountedCreature) {
+      if (f.cooldownTimer > 0) f.cooldownTimer = Math.max(0, f.cooldownTimer - dt);
+      if (f.chompTimer > 0) f.chompTimer = Math.max(0, f.chompTimer - dt);
+
+      if (isDunk && !this.bobo.isRescuing && !this.mountedCreature && f.cooldownTimer <= 0) {
+        if (f.telegraphTimer > 0) {
+          // 0.55s friendly territorial warning: pause & snap scissor jaw twice
+          f.telegraphTimer -= dt;
+          f.facing = sdx > 0 ? 1 : -1;
+          f.isAttacking = false;
+          f.swimPhase += dt * f.swimSpeedMultiplier * 1.4;
+          if (f.telegraphTimer <= 0) {
+            f.chargeTimer = 1.6;
+          }
+        } else if (f.chargeTimer > 0) {
+          f.chargeTimer -= dt;
+          f.isAttacking = true;
+          f.facing = sdx > 0 ? 1 : -1;
+          if (sDist > 1) {
+            f.x += (sdx / sDist) * 135 * dt;
+            f.y += (sdy / sDist) * 135 * dt;
+          }
+          f.swimPhase += dt * f.swimSpeedMultiplier * 1.6;
+          if (sDist < f.bodyHeight * 0.62 + 34 && this.invincibleTimer <= 0) {
+            this.oxygen = Math.max(0, this.oxygen - 18);
+            this.invincibleTimer = 1.6;
+            this.screenShakeTimer = 0.32;
+            this.hurtFlashTimer = 0.32;
+            if (sDist > 1) {
+              this.diverVx += (sdx / sDist) * 210;
+              this.diverVy += (sdy / sDist) * 210;
+              f.x -= (sdx / sDist) * 36;
+              f.y -= (sdy / sDist) * 36;
+            }
+            f.chargeTimer = 0;
+            f.isAttacking = false;
+            f.cooldownTimer = 2.2;
+            this.sound.playHurt();
+            this.addFX(this.diverX, this.diverY - 50, '🛡️ 哎呀！被鐵甲鄧氏魚頂到了！', '#FFD54F', 28);
+            if (this.oxygen <= 0) this.triggerDolphinRescue();
+          } else if (f.chargeTimer <= 0) {
+            f.isAttacking = false;
+            f.cooldownTimer = 2.2;
+          }
+        } else if (sDist < 300) {
+          f.telegraphTimer = 0.55;
+          f.facing = sdx > 0 ? 1 : -1;
+        } else {
+          f.isAttacking = false;
+          f.swimPhase += dt * f.swimSpeedMultiplier;
+          f.x += f.vx * 60 * dt;
+          f.y += Math.sin(f.swimPhase) * 1.4;
+          if (f.x < 90) { f.x = 90; f.vx = Math.abs(f.vx); f.facing = 1; }
+          else if (f.x > this.worldWidth - 90) { f.x = this.worldWidth - 90; f.vx = -Math.abs(f.vx); f.facing = -1; }
+        }
+      } else if (isShark && sDist < 350 && !this.bobo.isRescuing && !this.mountedCreature) {
         f.isAttacking = true;
         f.facing = sdx > 0 ? 1 : -1;
         const spd = f.species === 'GREAT_SHARK' ? 145 : 110;
@@ -831,15 +894,15 @@ export class DiveGame {
       }
       // Keep all marine creatures strictly below water surface and above seabed
       f.y = Math.max(175, Math.min(this.worldHeight - 125, f.y));
-      // Turn away from solid cliff ledges
+      // Turn away from solid cliff ledges (fixed typo: f.length instead of undefined f.bodyWidth)
       for (const cl of this.cliffLedges) {
         if (f.y > cl.y - f.bodyHeight * 0.4 && f.y < cl.y + cl.h + f.bodyHeight * 0.4) {
-          if (cl.left && f.x < cl.w * 0.88 + f.bodyWidth * 0.35) {
-            f.x = cl.w * 0.88 + f.bodyWidth * 0.35;
+          if (cl.left && f.x < cl.w * 0.88 + f.length * 0.35) {
+            f.x = cl.w * 0.88 + f.length * 0.35;
             f.vx = Math.abs(f.vx);
             f.facing = 1;
-          } else if (!cl.left && f.x > this.worldWidth - cl.w * 0.88 - f.bodyWidth * 0.35) {
-            f.x = this.worldWidth - cl.w * 0.88 - f.bodyWidth * 0.35;
+          } else if (!cl.left && f.x > this.worldWidth - cl.w * 0.88 - f.length * 0.35) {
+            f.x = this.worldWidth - cl.w * 0.88 - f.length * 0.35;
             f.vx = -Math.abs(f.vx);
             f.facing = -1;
           }
@@ -875,6 +938,14 @@ export class DiveGame {
       if (this.harpoonState === 'FIRING') {
         for (const f of this.fishes) {
           if (Math.hypot(this.harpoonX - f.x, this.harpoonY - f.y) < f.bodyHeight * 0.65) {
+            // Dunkleosteus Armor Dual-Solution: Harpoon Lv.<4 deflects gently with icon hint
+            if (f.species === 'DUNKLEOSTEUS' && this.state.harpoonLevel < 4) {
+              this.sound.playBubble();
+              this.spawnBurst(this.harpoonX, this.harpoonY, '#FFD54F', 8);
+              this.addFX(f.x, f.y - 62, '🛡️ → 🫧 / ⬆️🎯', '#FFD54F', 28);
+              this.harpoonState = 'REELING';
+              break;
+            }
             this.hookedFish = f;
             this.harpoonState = 'REELING';
             break;
@@ -1220,9 +1291,14 @@ export class DiveGame {
       }
     }
 
-    // Fishes
+    // Fishes (with frustum culling & shared CreatureRenderer)
     for (const f of this.fishes) {
-      this.renderFish(ctx, f);
+      const margin = f.length * 1.4;
+      if (f.x + margin < this.cameraX || f.x - margin > this.cameraX + w ||
+          f.y + margin < this.cameraY || f.y - margin > this.cameraY + h) {
+        continue;
+      }
+      this.renderFish(ctx, f, now);
     }
 
     // Bubble bullets
@@ -1324,224 +1400,9 @@ export class DiveGame {
     ctx.restore();
   }
 
-  renderFish(ctx, f) {
-    ctx.save();
-    ctx.translate(f.x, f.y);
-    ctx.scale(f.facing, 1);
-
-    const hl = f.length / 2;
-    const hh = f.bodyHeight * 0.46;
-    const tail = Math.sin(f.swimPhase) * 8;
-
-    if (f.species === 'JELLYFISH' || f.species === 'NEON_JELLYFISH') {
-      // Translucent bell + inner glow + swaying tentacles
-      ctx.fillStyle = f.primaryColor;
-      ctx.beginPath();
-      ctx.arc(0, -hh * 0.15, hl * 0.72, Math.PI, 0);
-      ctx.quadraticCurveTo(hl * 0.72, hh * 0.25, -hl * 0.72, hh * 0.25);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.28)';
-      ctx.beginPath();
-      ctx.ellipse(0, -hh * 0.3, hl * 0.42, hh * 0.28, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = f.secondaryColor;
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      for (let t = -2; t <= 2; t++) {
-        const tx = t * (hl * 0.24);
-        const tw = Math.sin(f.swimPhase + t) * 7;
-        ctx.beginPath();
-        ctx.moveTo(tx, hh * 0.2);
-        ctx.quadraticCurveTo(tx + tw, hh * 0.65, tx - tw * 0.5, hh * 1.15);
-        ctx.stroke();
-      }
-    } else if (f.species === 'TURTLE') {
-      // Rounded carapace + scutes + flippers + blush
-      ctx.fillStyle = f.secondaryColor;
-      ctx.beginPath(); ctx.ellipse(hl * 0.35, hh * 0.55, hl * 0.28, hh * 0.22, 0.4, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(-hl * 0.35, hh * 0.5, hl * 0.22, hh * 0.18, -0.3, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = f.primaryColor;
-      ctx.beginPath(); ctx.ellipse(0, 0, hl * 0.78, hh * 0.85, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(0, -hh * 0.1, hl * 0.45, hh * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#FF8A80';
-      ctx.beginPath(); ctx.arc(hl * 0.55, hh * 0.1, 4, 0, Math.PI * 2); ctx.fill();
-    } else {
-      const isLongNeck = f.species === 'PLESIOSAURUS' || f.species === 'ELASMOSAURUS' || f.species === 'NOTHOSAURUS';
-      const isDino = isLongNeck || f.species === 'LIOPLEURODON' || f.species === 'MOSASAURUS' || f.species === 'ICHTHYOSAURUS';
-
-      ctx.fillStyle = f.secondaryColor;
-      if (!isDino || f.species === 'ICHTHYOSAURUS') {
-        // Swept dorsal fin & crescent tail fin (fish & ichthyosaur)
-        ctx.beginPath();
-        ctx.moveTo(-hl * 0.15, -hh * 0.82);
-        ctx.quadraticCurveTo(-hl * 0.35, -hh * 1.45, -hl * 0.52, -hh * 0.72);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(-hl * 0.68, 0);
-        ctx.quadraticCurveTo(-hl * 0.95, -hh * 0.5, -hl * 1.18 + tail, -hh * 0.85);
-        ctx.quadraticCurveTo(-hl * 0.92 + tail * 0.4, 0, -hl * 1.18 + tail, hh * 0.85);
-        ctx.quadraticCurveTo(-hl * 0.95, hh * 0.5, -hl * 0.68, 0);
-        ctx.fill();
-      } else {
-        // Long tapering reptilian tail for marine dinosaurs
-        ctx.fillStyle = f.primaryColor;
-        ctx.beginPath();
-        ctx.moveTo(-hl * 0.62, -hh * 0.25);
-        ctx.quadraticCurveTo(-hl * 1.05, tail * 0.4, -hl * 1.38, tail);
-        ctx.quadraticCurveTo(-hl * 1.0, hh * 0.28, -hl * 0.62, hh * 0.25);
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      // Main streamlined body with crisp outline
-      ctx.fillStyle = f.primaryColor;
-      ctx.beginPath();
-      ctx.moveTo(hl * 0.88, 0);
-      ctx.bezierCurveTo(hl * 0.55, -hh * 1.05, -hl * 0.45, -hh * 0.95, -hl * 0.78, 0);
-      ctx.bezierCurveTo(-hl * 0.45, hh * 0.95, hl * 0.55, hh * 1.05, hl * 0.88, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      // Belly countershading highlight
-      ctx.fillStyle = 'rgba(255,255,255,0.26)';
-      ctx.beginPath();
-      ctx.ellipse(hl * 0.08, hh * 0.34, hl * 0.54, hh * 0.36, 0, 0, Math.PI);
-      ctx.fill();
-
-      if (f.species === 'CLOWNFISH') {
-        // 3 realistic black-edged white bands
-        for (const bx of [hl * 0.32, -hl * 0.05, -hl * 0.42]) {
-          ctx.fillStyle = '#1A1A1A';
-          ctx.fillRect(bx - 2, -hh * 0.72, hl * 0.16 + 4, hh * 1.44);
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(bx, -hh * 0.7, hl * 0.16, hh * 1.4);
-        }
-      }
-
-      if (f.species === 'BLUE_TANG') {
-        // Iconic black palette marking
-        ctx.fillStyle = '#111111';
-        ctx.beginPath();
-        ctx.ellipse(-hl * 0.08, -hh * 0.15, hl * 0.36, hh * 0.38, -0.15, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      if (f.species === 'GIANT_TUNA') {
-        // Metallic lateral stripe + yellow finlets
-        ctx.strokeStyle = '#E1F5FE'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.moveTo(-hl * 0.6, 0); ctx.lineTo(hl * 0.55, -hh * 0.08); ctx.stroke();
-        ctx.fillStyle = '#FFD600';
-        for (let ft = 0; ft < 4; ft++) {
-          ctx.beginPath(); ctx.arc(-hl * 0.45 - ft * 10, -hh * 0.55 + ft * 4, 3.5, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-
-      if (f.species === 'ANGLERFISH') {
-        ctx.strokeStyle = '#80DEEA'; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(hl * 0.55, -hh * 0.7); ctx.quadraticCurveTo(hl * 0.85, -hh * 1.15, hl * 0.98, -hh * 0.65); ctx.stroke();
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = 'rgba(0,229,255,0.55)';
-        ctx.beginPath(); ctx.arc(hl * 0.98, -hh * 0.65, 11, 0, Math.PI * 2); ctx.fill();
-        ctx.restore();
-      }
-
-      if (f.species === 'BLUE_WHALE') {
-        ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 2;
-        for (let p = -1; p <= 2; p++) {
-          ctx.beginPath(); ctx.moveTo(-hl * 0.2, hh * 0.35 + p * 8); ctx.lineTo(hl * 0.45, hh * 0.35 + p * 8); ctx.stroke();
-        }
-      }
-
-      if (f.species === 'REEF_SHARK' || f.species === 'GREAT_SHARK' || f.species === 'GIANT_TUNA') {
-        ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 2;
-        for (let g = 0; g < 3; g++) {
-          ctx.beginPath(); ctx.arc(hl * 0.22 - g * 9, 0, hh * 0.35, -0.5, 0.5); ctx.stroke();
-        }
-      }
-
-      if (f.species === 'PLESIOSAURUS' || f.species === 'ELASMOSAURUS' || f.species === 'NOTHOSAURUS') {
-        // Dynamic undulating S-curved neck + head + flapping paddles
-        const neckLen = f.species === 'ELASMOSAURUS' ? hl * 0.95 : hl * 0.62;
-        const neckWave = Math.sin(f.swimPhase * 0.8) * 9;
-        const padFlap = Math.sin(f.swimPhase * 1.1) * 0.25;
-        const headX = hl * 0.65 + neckLen;
-        const headY = -hh * 0.55 + neckWave;
-        ctx.strokeStyle = f.primaryColor; ctx.lineWidth = hh * 0.42; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(hl * 0.5, -hh * 0.1); ctx.quadraticCurveTo(hl * 0.8, -hh * 0.7 - neckWave * 0.5, headX - 4, headY); ctx.stroke();
-        ctx.fillStyle = f.primaryColor;
-        ctx.beginPath(); ctx.ellipse(headX, headY, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 2; ctx.stroke();
-        // Eye & friendly smile on the head
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath(); ctx.arc(headX + 6, headY - 3, 4.5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = f.isAttacking ? '#FFB300' : '#000000';
-        ctx.beginPath(); ctx.arc(headX + 7, headY - 3, 2.2, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = f.secondaryColor;
-        ctx.beginPath(); ctx.ellipse(hl * 0.15, hh * 0.75, hl * 0.22, hh * 0.45, 0.35 + padFlap, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(-hl * 0.28, hh * 0.7, hl * 0.2, hh * 0.4, -0.3 - padFlap, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.22)';
-        for (let s = -2; s <= 1; s++) {
-          ctx.beginPath(); ctx.arc(s * hl * 0.22, -hh * 0.35, 5, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-
-      if (f.species === 'LIOPLEURODON' || f.species === 'MOSASAURUS') {
-        // Reptilian dorsal ridge scutes + tapered jaw with rounded tooth notches + flapping paddles
-        const padFlap = Math.sin(f.swimPhase) * 0.22;
-        ctx.fillStyle = f.secondaryColor;
-        ctx.beginPath(); ctx.ellipse(hl * 0.2, hh * 0.75, hl * 0.24, hh * 0.42, 0.3 + padFlap, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(-hl * 0.3, hh * 0.7, hl * 0.2, hh * 0.36, -0.25 - padFlap, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        for (let sc = -3; sc <= 2; sc++) {
-          ctx.beginPath(); ctx.arc(sc * hl * 0.2, -hh * 0.82, 5.5, Math.PI, 0); ctx.fill();
-        }
-        // Friendly rounded jaw & rounded tooth dots
-        ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(hl * 0.42, hh * 0.12); ctx.lineTo(hl * 0.82, hh * 0.06); ctx.stroke();
-        ctx.fillStyle = '#FFFFFF';
-        for (let t = 0; t < 4; t++) {
-          ctx.beginPath(); ctx.arc(hl * 0.48 + t * 9, hh * 0.13 - t * 1.2, 2.2, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-
-      if (f.species === 'ICHTHYOSAURUS') {
-        // Sleek lateral countershading stripe
-        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.moveTo(-hl * 0.55, 0); ctx.lineTo(hl * 0.6, -hh * 0.12); ctx.stroke();
-      }
-    }
-
-    // Friendly eye (skip torso eye for long-neck dinosaurs)
-    if (f.species !== 'PLESIOSAURUS' && f.species !== 'ELASMOSAURUS' && f.species !== 'NOTHOSAURUS') {
-      ctx.fillStyle = '#FFFFFF';
-      ctx.beginPath(); ctx.arc(hl * 0.52, -hh * 0.2, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = f.isAttacking ? '#FFB300' : '#000000';
-      ctx.beginPath(); ctx.arc(hl * 0.54, -hh * 0.2, 3, 0, Math.PI * 2); ctx.fill();
-    }
-
-    if (f.isAttacking && !f.isSleeping) {
-      ctx.strokeStyle = 'rgba(255,179,0,0.72)';
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(0, 0, hh * 1.25, 0, Math.PI * 2); ctx.stroke();
-    }
-
-    ctx.restore();
-
-    if (f.isSleeping) {
-      ctx.strokeStyle = '#00E5FF'; ctx.lineWidth = 3;
-      ctx.fillStyle = 'rgba(0,229,255,0.22)';
-      ctx.beginPath(); ctx.arc(f.x, f.y, Math.max(f.length, f.bodyHeight) * 0.65, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.font = '24px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('💤', f.x, f.y - f.bodyHeight * 0.7);
-      ctx.textAlign = 'left';
-    }
+  renderFish(ctx, f, now = performance.now()) {
+    const deepGlow = f.y > 1800 ? Math.min(1, (f.y - 1800) / 1400) : 0;
+    renderCreature(ctx, f, { now, deepGlow, drawStatus: true });
   }
 
   renderKidDiver(ctx, now) {
@@ -1680,7 +1541,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v1.8', w - 14, h - 12);
+    ctx.fillText('v1.9', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

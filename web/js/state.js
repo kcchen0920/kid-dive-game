@@ -13,6 +13,7 @@ const DEFAULT_DATA = {
   tunaCount: 0,
   greatSharkCount: 0,
   anglerfishCount: 0,
+  dunkleosteusCount: 0,
   pearlCount: 0,
 };
 
@@ -44,6 +45,7 @@ export class GameState {
         tunaCount: this.tunaCount,
         greatSharkCount: this.greatSharkCount,
         anglerfishCount: this.anglerfishCount,
+        dunkleosteusCount: this.dunkleosteusCount,
         pearlCount: this.pearlCount,
       }));
     } catch {}
@@ -77,6 +79,7 @@ export class GameState {
     else if (name.includes('鮪')) this.tunaCount++;
     else if (name.includes('大白鯊')) this.greatSharkCount++;
     else if (name.includes('安康')) this.anglerfishCount++;
+    else if (name.includes('鄧氏魚') || name.includes('Dunkleosteus')) this.dunkleosteusCount++;
     this.save();
   }
 

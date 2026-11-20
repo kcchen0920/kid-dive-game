@@ -264,10 +264,13 @@ public class DiverGameView extends View {
     private final List<Bubble> bubbles = new ArrayList<>();
 
     // Realistic Fish Class
+    private final CreatureRenderer creatureRenderer = new CreatureRenderer();
+
     public static class RealisticFish {
         public enum Species {
             CLOWNFISH, BLUE_TANG, YELLOW_TANG, BABY_SHARK, REEF_SHARK, GREAT_SHARK, GIANT_TUNA, JELLYFISH,
-            ANGLERFISH, NEON_JELLYFISH, TURTLE, BLUE_WHALE
+            ANGLERFISH, NEON_JELLYFISH, TURTLE, BLUE_WHALE,
+            LIOPLEURODON, MOSASAURUS, PLESIOSAURUS, ELASMOSAURUS, NOTHOSAURUS, ICHTHYOSAURUS, DUNKLEOSTEUS
         }
 
         public Species species;
@@ -281,6 +284,10 @@ public class DiverGameView extends View {
         public float swimSpeedMultiplier;
         public int primaryColor, secondaryColor, bellyColor;
         public boolean isAttacking = false;
+        public float telegraphTimer = 0f;
+        public float chargeTimer = 0f;
+        public float cooldownTimer = 0f;
+        public float chompTimer = 0f;
 
         // Sequence 3: Stun / Sleep State from Bubble Gun
         public boolean isSleeping = false;
@@ -447,8 +454,17 @@ public class DiverGameView extends View {
         spawnSpecies(RealisticFish.Species.BLUE_WHALE, "深海巨型藍鯨 (可騎乘)", 250, 120.0f, 2, 2300f, 3450f);
 
         // Sequence 1: Abyssal Bioluminescent Cave (340m - 440m+ / Y: 3500 - 4550)
-        spawnSpecies(RealisticFish.Species.ANGLERFISH, "深海安康魚 (Anglerfish)", 180, 22.0f, 4, 3550f, 4520f);
-        spawnSpecies(RealisticFish.Species.NEON_JELLYFISH, "深海霓虹發光水母", 85, 3.8f, 3, 3700f, 4550f);
+        spawnSpecies(RealisticFish.Species.ANGLERFISH, "深海安康魚 (Anglerfish)", 180, 22.0f, 4, 3550f, 4450f);
+        spawnSpecies(RealisticFish.Species.NEON_JELLYFISH, "深海霓虹發光水母", 85, 3.8f, 3, 3700f, 4450f);
+
+        // v1.9 Prehistoric Marine Reptiles & Dunkleosteus (clamped safely inside worldHeight = 4600f)
+        if (random.nextFloat() < 0.85f) spawnSpecies(RealisticFish.Species.NOTHOSAURUS, "幻龍 (Nothosaurus)", 360, 210f, 1, 1050f, 2600f);
+        if (random.nextFloat() < 0.85f) spawnSpecies(RealisticFish.Species.ICHTHYOSAURUS, "魚龍 (Ichthyosaurus)", 340, 190f, 1, 1150f, 3000f);
+        if (random.nextFloat() < 0.85f) spawnSpecies(RealisticFish.Species.PLESIOSAURUS, "蛇頸龍 (Plesiosaurus)", 420, 340f, 1, 1350f, 3500f);
+        if (random.nextFloat() < 0.85f) spawnSpecies(RealisticFish.Species.ELASMOSAURUS, "薄片龍 (Elasmosaurus)", 460, 380f, 1, 1750f, 3900f);
+        if (random.nextFloat() < 0.85f) spawnSpecies(RealisticFish.Species.LIOPLEURODON, "滑齒龍 (Liopleurodon)", 520, 620f, 1, 2100f, 4250f);
+        if (random.nextFloat() < 0.85f) spawnSpecies(RealisticFish.Species.MOSASAURUS, "滄龍 (Mosasaurus)", 600, 850f, 1, 2500f, 4420f);
+        spawnSpecies(RealisticFish.Species.DUNKLEOSTEUS, "鐵甲鄧氏魚 (Dunkleosteus)", 550, 540f, 1 + (random.nextBoolean() ? 1 : 0), 2350f, 4400f);
 
         lastFrameTime = SystemClock.uptimeMillis();
     }
@@ -535,6 +551,34 @@ public class DiverGameView extends View {
                 case BLUE_WHALE:
                     f.length = 390f; f.bodyHeight = 130f;
                     f.primaryColor = 0xFF0277BD; f.secondaryColor = 0xFFFFFFFF; f.bellyColor = 0xFFE1F5FE;
+                    break;
+                case LIOPLEURODON:
+                    f.length = 240f; f.bodyHeight = 92f;
+                    f.primaryColor = 0xFF455A64; f.secondaryColor = 0xFFFF8A65; f.bellyColor = 0xFFFFF3E0;
+                    break;
+                case MOSASAURUS:
+                    f.length = 275f; f.bodyHeight = 92f;
+                    f.primaryColor = 0xFF006064; f.secondaryColor = 0xFF26C6DA; f.bellyColor = 0xFFE0F7FA;
+                    break;
+                case PLESIOSAURUS:
+                    f.length = 215f; f.bodyHeight = 78f;
+                    f.primaryColor = 0xFF00897B; f.secondaryColor = 0xFFFFF176; f.bellyColor = 0xFFB2DFDB;
+                    break;
+                case ELASMOSAURUS:
+                    f.length = 235f; f.bodyHeight = 74f;
+                    f.primaryColor = 0xFF1E88E5; f.secondaryColor = 0xFF80D8FF; f.bellyColor = 0xFFE3F2FD;
+                    break;
+                case NOTHOSAURUS:
+                    f.length = 190f; f.bodyHeight = 66f;
+                    f.primaryColor = 0xFF689F38; f.secondaryColor = 0xFFFFEE58; f.bellyColor = 0xFFF1F8E9;
+                    break;
+                case ICHTHYOSAURUS:
+                    f.length = 180f; f.bodyHeight = 70f;
+                    f.primaryColor = 0xFF3949AB; f.secondaryColor = 0xFF80DEEA; f.bellyColor = 0xFFFFFFFF;
+                    break;
+                case DUNKLEOSTEUS:
+                    f.length = 255f; f.bodyHeight = 108f;
+                    f.primaryColor = 0xFF5D4037; f.secondaryColor = 0xFFFFB300; f.bellyColor = 0xFFCFD8DC;
                     break;
             }
             fishes.add(f);
@@ -1181,11 +1225,64 @@ public class DiverGameView extends View {
             }
 
             boolean isSharkPredator = (f.species == RealisticFish.Species.REEF_SHARK || f.species == RealisticFish.Species.GREAT_SHARK);
+            boolean isDunk = (f.species == RealisticFish.Species.DUNKLEOSTEUS);
             float sdx = diverX - f.x;
             float sdy = diverY - f.y;
             float sDist = (float) Math.hypot(sdx, sdy);
+            if (f.cooldownTimer > 0f) f.cooldownTimer = Math.max(0f, f.cooldownTimer - dt);
+            if (f.chompTimer > 0f) f.chompTimer = Math.max(0f, f.chompTimer - dt);
 
-            if (isSharkPredator && sDist < 350f && !bobo.isRescuing && mountedCreature == null) {
+            if (isDunk && !bobo.isRescuing && mountedCreature == null && f.cooldownTimer <= 0f) {
+                if (f.telegraphTimer > 0f) {
+                    f.telegraphTimer -= dt;
+                    f.facing = (sdx > 0 ? 1f : -1f);
+                    f.isAttacking = false;
+                    f.swimPhase += dt * (f.swimSpeedMultiplier * 1.4f);
+                    if (f.telegraphTimer <= 0f) {
+                        f.chargeTimer = 1.6f;
+                    }
+                } else if (f.chargeTimer > 0f) {
+                    f.chargeTimer -= dt;
+                    f.isAttacking = true;
+                    f.facing = (sdx > 0 ? 1f : -1f);
+                    if (sDist > 1f) {
+                        f.x += (sdx / sDist) * 135f * dt;
+                        f.y += (sdy / sDist) * 135f * dt;
+                    }
+                    f.swimPhase += dt * (f.swimSpeedMultiplier * 1.6f);
+                    if (sDist < (f.bodyHeight * 0.62f + 34f) && invincibleTimer <= 0f) {
+                        oxygen = Math.max(0f, oxygen - 18f);
+                        invincibleTimer = 1.6f;
+                        screenShakeTimer = 0.32f;
+                        hurtFlashTimer = 0.32f;
+                        if (sDist > 1f) {
+                            diverVx += (sdx / sDist) * 210f;
+                            diverVy += (sdy / sDist) * 210f;
+                            f.x -= (sdx / sDist) * 36f;
+                            f.y -= (sdy / sDist) * 36f;
+                        }
+                        f.chargeTimer = 0f;
+                        f.isAttacking = false;
+                        f.cooldownTimer = 2.2f;
+                        SoundManager.get(getContext()).playHurt();
+                        addFX(diverX, diverY - 50f, "🛡️ 哎呀！被鐵甲鄧氏魚頂到了！", 0xFFFFD54F, 30f);
+                        if (oxygen <= 0f) triggerDolphinRescue();
+                    } else if (f.chargeTimer <= 0f) {
+                        f.isAttacking = false;
+                        f.cooldownTimer = 2.2f;
+                    }
+                } else if (sDist < 300f) {
+                    f.telegraphTimer = 0.55f;
+                    f.facing = (sdx > 0 ? 1f : -1f);
+                } else {
+                    f.isAttacking = false;
+                    f.swimPhase += dt * f.swimSpeedMultiplier;
+                    f.x += f.vx * 60f * dt;
+                    f.y += (float) Math.sin(f.swimPhase) * 1.6f;
+                    if (f.x < 90f) { f.x = 90f; f.vx = Math.abs(f.vx); f.facing = 1f; }
+                    else if (f.x > worldWidth - 90f) { f.x = worldWidth - 90f; f.vx = -Math.abs(f.vx); f.facing = -1f; }
+                }
+            } else if (isSharkPredator && sDist < 350f && !bobo.isRescuing && mountedCreature == null) {
                 f.isAttacking = true;
                 f.facing = (sdx > 0 ? 1f : -1f);
                 float chargeSpeed = (f.species == RealisticFish.Species.GREAT_SHARK ? 145f : 110f);
@@ -1255,6 +1352,13 @@ public class DiverGameView extends View {
 
             for (RealisticFish f : fishes) {
                 if (Math.hypot(harpoonX - f.x, harpoonY - f.y) < (f.bodyHeight * 0.65f)) {
+                    if (f.species == RealisticFish.Species.DUNKLEOSTEUS && state.harpoonLevel < 4) {
+                        SoundManager.get(getContext()).playBubble();
+                        spawnBurst(harpoonX, harpoonY, 0xFFFFD54F, 8);
+                        addFX(f.x, f.y - 60f, "🛡️ → 🫧 / ⬆️🎯", 0xFFFFD54F, 30f);
+                        harpoonState = HarpoonState.REELING;
+                        break;
+                    }
                     hookedFish = f;
                     harpoonState = HarpoonState.REELING;
                     addFX(f.x, f.y - 25f, "🎯 鎖定命中！收線回捲！", 0xFFFFD700, 32f);
@@ -2135,345 +2239,41 @@ public class DiverGameView extends View {
     }
 
     private void renderRealisticFish(Canvas canvas, RealisticFish f, long now) {
-        canvas.save();
-        canvas.translate(f.x, f.y);
-        canvas.scale(f.facing, 1.0f);
+        // Frustum culling for smooth 60fps
+        float margin = f.length * 1.4f;
+        if (f.x + margin < cameraX || f.x - margin > cameraX + getWidth()
+                || f.y + margin < cameraY || f.y - margin > cameraY + getHeight()) {
+            return;
+        }
 
-        float wave = (float) Math.sin(f.swimPhase) * 6f;
-        float tailWave = (float) Math.sin(f.swimPhase - 1.2f) * 12f;
+        float deepGlow = f.y > 1800f ? Math.min(1f, (f.y - 1800f) / 1400f) : 0f;
+        creatureRenderer.renderCreature(
+                canvas, f.species, f.x, f.y, f.facing, f.length, f.bodyHeight, f.swimPhase,
+                f.primaryColor, f.secondaryColor, f.isAttacking, f.telegraphTimer, f.chompTimer,
+                deepGlow, 0f, now
+        );
 
         // Sequence 3: Render Sleeping Protective Bubble
         if (f.isSleeping) {
+            float rad = f.bubbleEncloseRadius > 0f ? f.bubbleEncloseRadius : Math.max(f.length, f.bodyHeight) * 0.65f;
             diverPaint.setStyle(Paint.Style.FILL);
             diverPaint.setColor(0x5500E5FF);
-            canvas.drawCircle(0, 0, f.bubbleEncloseRadius, diverPaint);
+            canvas.drawCircle(f.x, f.y, rad, diverPaint);
             diverPaint.setStyle(Paint.Style.STROKE);
             diverPaint.setStrokeWidth(4f);
             diverPaint.setColor(0xEEFFFFFF);
-            canvas.drawCircle(0, 0, f.bubbleEncloseRadius, diverPaint);
+            canvas.drawCircle(f.x, f.y, rad, diverPaint);
             diverPaint.setStyle(Paint.Style.FILL);
             diverPaint.setColor(0xEEFFFFFF);
-            canvas.drawCircle(-f.bubbleEncloseRadius * 0.35f, -f.bubbleEncloseRadius * 0.35f, 5f, diverPaint);
+            canvas.drawCircle(f.x - rad * 0.35f, f.y - rad * 0.35f, 5f, diverPaint);
 
-            // Floating cartoon Zzz
             textPaint.setColor(0xFF00E5FF);
             textPaint.setTextSize(26f);
             textPaint.setFakeBoldText(true);
-            canvas.drawText("💤 呼嚕呼嚕... (活捉 +35 金幣)", -80f, -f.bubbleEncloseRadius - 15f, textPaint);
+            textPaint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("💤 💖", f.x, f.y - rad - 12f, textPaint);
+            textPaint.setTextAlign(Paint.Align.LEFT);
         }
-
-        if (f.isAttacking && !f.isSleeping) {
-            fishPaint.setStyle(Paint.Style.STROKE);
-            fishPaint.setStrokeWidth(3f);
-            fishPaint.setColor(0xAAFFB300);
-            canvas.drawCircle(0, 0, f.bodyHeight * 0.85f, fishPaint);
-            fishPaint.setStyle(Paint.Style.FILL);
-            fishPaint.setColor(0xFFFFB300);
-            canvas.drawCircle(f.length * 0.25f, -f.bodyHeight * 0.2f, 5f, fishPaint);
-        }
-
-        fishPaint.setStyle(Paint.Style.FILL);
-
-        // Sequence 1: Deep-Sea Bioluminescent Anglerfish
-        if (f.species == RealisticFish.Species.ANGLERFISH) {
-            float halfL = f.length / 2f;
-            float halfH = f.bodyHeight / 2f;
-
-            // Bioluminescent Esca Lantern Glow
-            float pulse = 0.85f + (float) Math.sin(now / 150.0) * 0.15f;
-            float lureX = halfL * 0.95f;
-            float lureY = -halfH * 1.35f;
-
-            lightPaint.setStyle(Paint.Style.FILL);
-            lightPaint.setColor(0x8800E5FF);
-            canvas.drawCircle(lureX, lureY, 32f * pulse, lightPaint);
-            lightPaint.setColor(0xEEFFF59D);
-            canvas.drawCircle(lureX, lureY, 14f * pulse, lightPaint);
-
-            // Illicium (Curved Fishing Rod from forehead)
-            ropePaint.setColor(0xFF37474F);
-            ropePaint.setStrokeWidth(4f);
-            Path rod = new Path();
-            rod.moveTo(halfL * 0.25f, -halfH * 0.75f);
-            rod.quadTo(halfL * 0.65f, -halfH * 1.7f, lureX, lureY);
-            canvas.drawPath(rod, ropePaint);
-
-            // Round Deep-Sea Body
-            fishPaint.setColor(f.primaryColor);
-            canvas.drawOval(new RectF(-halfL, -halfH, halfL * 0.7f, halfH), fishPaint);
-
-            // Cavernous Jaw
-            fishPaint.setColor(0xFF1A237E);
-            Path jaw = new Path();
-            jaw.moveTo(halfL * 0.7f, -halfH * 0.1f);
-            jaw.lineTo(halfL * 0.15f, halfH * 0.65f);
-            jaw.lineTo(halfL * 0.65f, halfH * 0.75f);
-            jaw.close();
-            canvas.drawPath(jaw, fishPaint);
-
-            // Translucent Sharp Fangs
-            fishPaint.setColor(0xEEFFFFFF);
-            for (int t = 0; t < 5; t++) {
-                float tx = halfL * 0.22f + t * 9f;
-                canvas.drawLine(tx, halfH * 0.2f, tx + 4f, -halfH * 0.15f, fishPaint);
-                canvas.drawLine(tx + 4f, -halfH * 0.15f, tx + 8f, halfH * 0.2f, fishPaint);
-            }
-
-            // Glowing Green Abyssal Eye
-            fishPaint.setColor(0xFF76FF03);
-            canvas.drawCircle(halfL * 0.35f, -halfH * 0.35f, 7.5f, fishPaint);
-            fishPaint.setColor(Color.BLACK);
-            canvas.drawCircle(halfL * 0.36f, -halfH * 0.35f, 3.5f, fishPaint);
-
-            // Caudal Tail Fin
-            fishPaint.setColor(0xFF37474F);
-            Path aTail = new Path();
-            aTail.moveTo(-halfL, 0);
-            aTail.lineTo(-halfL - 35f + tailWave, -22f);
-            aTail.lineTo(-halfL - 25f + tailWave, 0);
-            aTail.lineTo(-halfL - 35f + tailWave, 22f);
-            aTail.close();
-            canvas.drawPath(aTail, fishPaint);
-
-        } else if (f.species == RealisticFish.Species.NEON_JELLYFISH) {
-            // Sequence 1: Neon Bioluminescent Jellyfish
-            float halfL = f.length / 2f;
-            float halfH = f.bodyHeight / 2f;
-            float pulse = (float) Math.sin(f.swimPhase * 1.5) * 0.18f;
-
-            // Radiant Outer Glow
-            lightPaint.setColor(0x5500E5FF);
-            canvas.drawCircle(0, -halfH * 0.2f, halfL * 1.25f, lightPaint);
-
-            // Translucent Neon Bell
-            fishPaint.setColor(f.primaryColor);
-            RectF dome = new RectF(-halfL * (1f + pulse), -halfH, halfL * (1f + pulse), halfH * 0.4f);
-            canvas.drawArc(dome, 180f, 180f, true, fishPaint);
-
-            // Shifting Rainbow Rim
-            fishPaint.setStyle(Paint.Style.STROKE);
-            fishPaint.setStrokeWidth(5f);
-            fishPaint.setColor(f.secondaryColor);
-            canvas.drawArc(dome, 180f, 180f, false, fishPaint);
-            fishPaint.setStyle(Paint.Style.FILL);
-
-            // Glowing Trailing Tentacles
-            for (int k = -3; k <= 3; k++) {
-                float tx = k * 9f;
-                float tWave = (float) Math.sin(f.swimPhase * 1.2f + k * 0.7) * 16f;
-                ropePaint.setColor(k % 2 == 0 ? 0xCCFF4081 : 0xCC76FF03);
-                ropePaint.setStrokeWidth(3f);
-                canvas.drawLine(tx, halfH * 0.2f, tx + tWave, halfH * 1.2f, ropePaint);
-            }
-
-        } else if (f.species == RealisticFish.Species.REEF_SHARK || f.species == RealisticFish.Species.GREAT_SHARK || f.species == RealisticFish.Species.BABY_SHARK) {
-            float halfL = f.length / 2f;
-            float halfH = f.bodyHeight / 2f;
-
-            // Shark Body
-            fishPaint.setColor(f.primaryColor);
-            Path sharkBody = new Path();
-            sharkBody.moveTo(halfL, 0);
-            sharkBody.quadTo(halfL * 0.35f, -halfH * 1.18f, -halfL * 0.4f + wave * 0.3f, -halfH * 0.65f);
-            sharkBody.quadTo(-halfL * 0.75f + wave * 0.6f, -halfH * 0.28f, -halfL + tailWave, 0);
-            sharkBody.quadTo(-halfL * 0.75f + wave * 0.6f, halfH * 0.28f, -halfL * 0.4f + wave * 0.3f, halfH * 0.65f);
-            sharkBody.quadTo(halfL * 0.35f, halfH * 1.18f, halfL, 0);
-            sharkBody.close();
-            canvas.drawPath(sharkBody, fishPaint);
-
-            // Underbelly
-            fishPaint.setColor(f.bellyColor);
-            Path belly = new Path();
-            belly.moveTo(halfL * 0.88f, 0);
-            belly.quadTo(halfL * 0.25f, halfH * 1.05f, -halfL * 0.4f + wave * 0.3f, halfH * 0.45f);
-            belly.lineTo(-halfL * 0.4f + wave * 0.3f, 0);
-            belly.close();
-            canvas.drawPath(belly, fishPaint);
-
-            // Dorsal Fin
-            fishPaint.setColor(f.primaryColor);
-            Path dorsal = new Path();
-            dorsal.moveTo(halfL * 0.12f, -halfH * 0.85f);
-            dorsal.lineTo(-halfL * 0.14f, -halfH * 1.95f);
-            dorsal.lineTo(-halfL * 0.02f, -halfH * 0.65f);
-            dorsal.close();
-            canvas.drawPath(dorsal, fishPaint);
-
-            if (f.species == RealisticFish.Species.REEF_SHARK) {
-                fishPaint.setColor(0xFF1A1A1A);
-                Path dTip = new Path();
-                dTip.moveTo(-halfL * 0.05f, -halfH * 1.55f);
-                dTip.lineTo(-halfL * 0.14f, -halfH * 1.95f);
-                dTip.lineTo(-halfL * 0.09f, -halfH * 1.45f);
-                dTip.close();
-                canvas.drawPath(dTip, fishPaint);
-            }
-
-            // Tail Fin
-            fishPaint.setColor(f.primaryColor);
-            Path tail = new Path();
-            tail.moveTo(-halfL + tailWave, 0);
-            tail.lineTo(-halfL * 1.38f + tailWave * 1.3f, -halfH * 1.25f);
-            tail.lineTo(-halfL * 1.18f + tailWave * 1.1f, -halfH * 0.2f);
-            tail.lineTo(-halfL * 1.32f + tailWave * 1.3f, halfH * 0.85f);
-            tail.close();
-            canvas.drawPath(tail, fishPaint);
-
-            // Gill Slits
-            fishPaint.setColor(0x88212121);
-            fishPaint.setStrokeWidth(2f);
-            fishPaint.setStyle(Paint.Style.STROKE);
-            for (int g = 0; g < 5; g++) {
-                float gx = halfL * 0.36f - g * 5f;
-                canvas.drawLine(gx, -halfH * 0.22f, gx - 2.5f, halfH * 0.22f, fishPaint);
-            }
-            fishPaint.setStyle(Paint.Style.FILL);
-
-            // Eye
-            fishPaint.setColor(Color.WHITE);
-            canvas.drawCircle(halfL * 0.72f, -halfH * 0.22f, 7f, fishPaint);
-            fishPaint.setColor(Color.BLACK);
-            canvas.drawCircle(halfL * 0.74f, -halfH * 0.22f, 3.8f, fishPaint);
-
-        } else if (f.species == RealisticFish.Species.JELLYFISH) {
-            float halfL = f.length / 2f;
-            float halfH = f.bodyHeight / 2f;
-            float pulse = (float) Math.sin(f.swimPhase * 1.5) * 0.15f;
-
-            fishPaint.setColor(f.primaryColor);
-            RectF dome = new RectF(-halfL * (1f + pulse), -halfH, halfL * (1f + pulse), halfH * 0.35f);
-            canvas.drawArc(dome, 180f, 180f, true, fishPaint);
-
-            for (int k = -2; k <= 2; k++) {
-                float tx = k * 11f;
-                float tWave = (float) Math.sin(f.swimPhase + k) * 12f;
-                ropePaint.setColor(0x99BA68C8);
-                ropePaint.setStrokeWidth(2.5f);
-                canvas.drawLine(tx, halfH * 0.2f, tx + tWave, halfH * 1.1f, ropePaint);
-            }
-
-        } else if (f.species == RealisticFish.Species.TURTLE) {
-            // Green Sea Turtle
-            float halfL = f.length / 2f;
-            float halfH = f.bodyHeight / 2f;
-            fishPaint.setColor(f.primaryColor);
-            canvas.drawOval(new RectF(-halfL * 0.8f, -halfH, halfL * 0.7f, halfH), fishPaint);
-            fishPaint.setColor(f.secondaryColor);
-            canvas.drawCircle(-halfL * 0.2f, 0, halfH * 0.45f, fishPaint);
-            canvas.drawCircle(halfL * 0.25f, 0, halfH * 0.4f, fishPaint);
-            fishPaint.setColor(0xFF388E3C);
-            canvas.drawCircle(halfL * 0.82f, -halfH * 0.1f, 15f, fishPaint);
-            fishPaint.setColor(Color.BLACK);
-            canvas.drawCircle(halfL * 0.88f, -halfH * 0.15f, 3f, fishPaint);
-            fishPaint.setColor(0xFF2E7D32);
-            float fWave = (float) Math.sin(f.swimPhase) * 15f;
-            Path frontFin = new Path();
-            frontFin.moveTo(halfL * 0.2f, -halfH * 0.6f);
-            frontFin.lineTo(halfL * 0.5f, -halfH * 1.8f + fWave);
-            frontFin.lineTo(0f, -halfH * 0.8f);
-            frontFin.close();
-            canvas.drawPath(frontFin, fishPaint);
-            Path rearFin = new Path();
-            rearFin.moveTo(-halfL * 0.5f, -halfH * 0.5f);
-            rearFin.lineTo(-halfL * 0.85f, -halfH * 1.2f - fWave);
-            rearFin.lineTo(-halfL * 0.4f, -halfH * 0.4f);
-            rearFin.close();
-            canvas.drawPath(rearFin, fishPaint);
-            if (mountedCreature == null && Math.hypot(diverX - f.x, diverY - f.y) < 130f) {
-                textPaint.setColor(0xFF00E676);
-                textPaint.setTextSize(22f);
-                // Prompt handled by renderNearbyActionPrompt
-            }
-        } else if (f.species == RealisticFish.Species.BLUE_WHALE) {
-            // Giant Blue Whale
-            float halfL = f.length / 2f;
-            float halfH = f.bodyHeight / 2f;
-            fishPaint.setColor(f.primaryColor);
-            Path whaleBody = new Path();
-            whaleBody.moveTo(halfL, 0);
-            whaleBody.quadTo(halfL * 0.4f, -halfH * 1.05f, -halfL * 0.3f, -halfH * 0.6f);
-            whaleBody.quadTo(-halfL * 0.7f, -halfH * 0.25f, -halfL + tailWave, 0);
-            whaleBody.quadTo(-halfL * 0.7f, halfH * 0.25f, -halfL * 0.3f, halfH * 0.6f);
-            whaleBody.quadTo(halfL * 0.4f, halfH * 1.05f, halfL, 0);
-            whaleBody.close();
-            canvas.drawPath(whaleBody, fishPaint);
-
-            fishPaint.setColor(f.bellyColor);
-            Path wBelly = new Path();
-            wBelly.moveTo(halfL * 0.85f, 0);
-            wBelly.quadTo(halfL * 0.25f, halfH * 0.95f, -halfL * 0.3f, halfH * 0.45f);
-            wBelly.lineTo(-halfL * 0.3f, 0);
-            wBelly.close();
-            canvas.drawPath(wBelly, fishPaint);
-
-            fishPaint.setColor(0x440277BD);
-            fishPaint.setStrokeWidth(2.5f);
-            fishPaint.setStyle(Paint.Style.STROKE);
-            for (int k = 0; k < 6; k++) {
-                float py = halfH * 0.2f + k * 8f;
-                canvas.drawLine(halfL * 0.6f - k * 18f, py, -halfL * 0.2f, py, fishPaint);
-            }
-            fishPaint.setStyle(Paint.Style.FILL);
-
-            fishPaint.setColor(f.primaryColor);
-            Path wTail = new Path();
-            wTail.moveTo(-halfL + tailWave, 0);
-            wTail.lineTo(-halfL * 1.25f + tailWave, -halfH * 0.9f);
-            wTail.lineTo(-halfL * 1.12f + tailWave, 0);
-            wTail.lineTo(-halfL * 1.25f + tailWave, halfH * 0.9f);
-            wTail.close();
-            canvas.drawPath(wTail, fishPaint);
-
-            fishPaint.setColor(Color.WHITE);
-            canvas.drawCircle(halfL * 0.72f, -halfH * 0.2f, 6.5f, fishPaint);
-            fishPaint.setColor(0xFF212121);
-            canvas.drawCircle(halfL * 0.73f, -halfH * 0.2f, 3.2f, fishPaint);
-
-            if (mountedCreature == null && Math.hypot(diverX - f.x, diverY - f.y) < 180f) {
-                textPaint.setColor(0xFF40C4FF);
-                textPaint.setTextSize(24f);
-                // Prompt handled by renderNearbyActionPrompt
-            }
-        } else {
-            // General Coral Fish (Clownfish, Blue Tang, Yellow Tang, Tuna)
-            float halfL = f.length / 2f;
-            float halfH = f.bodyHeight / 2f;
-
-            fishPaint.setColor(f.primaryColor);
-            Path fishBody = new Path();
-            fishBody.moveTo(halfL, 0);
-            fishBody.quadTo(0, -halfH * 1.15f, -halfL * 0.6f + wave * 0.4f, -halfH * 0.3f);
-            fishBody.lineTo(-halfL + tailWave, 0);
-            fishBody.lineTo(-halfL * 0.6f + wave * 0.4f, halfH * 0.3f);
-            fishBody.quadTo(0, halfH * 1.15f, halfL, 0);
-            fishBody.close();
-            canvas.drawPath(fishBody, fishPaint);
-
-            // Tail Fin
-            fishPaint.setColor(f.secondaryColor);
-            Path tail = new Path();
-            tail.moveTo(-halfL * 0.6f + wave * 0.4f, 0);
-            tail.lineTo(-halfL * 1.25f + tailWave, -halfH * 0.7f);
-            tail.lineTo(-halfL * 1.1f + tailWave, 0);
-            tail.lineTo(-halfL * 1.25f + tailWave, halfH * 0.7f);
-            tail.close();
-            canvas.drawPath(tail, fishPaint);
-
-            // White stripes for Clownfish
-            if (f.species == RealisticFish.Species.CLOWNFISH) {
-                fishPaint.setColor(Color.WHITE);
-                canvas.drawRect(halfL * 0.15f, -halfH * 0.75f, halfL * 0.35f, halfH * 0.75f, fishPaint);
-                canvas.drawRect(-halfL * 0.2f, -halfH * 0.6f, -halfL * 0.05f, halfH * 0.6f, fishPaint);
-            }
-
-            // Eye
-            fishPaint.setColor(Color.WHITE);
-            canvas.drawCircle(halfL * 0.62f, -halfH * 0.25f, 6.5f, fishPaint);
-            fishPaint.setColor(Color.BLACK);
-            canvas.drawCircle(halfL * 0.64f, -halfH * 0.25f, 3.2f, fishPaint);
-        }
-
-        canvas.restore();
     }
 
     private void renderDaveDiver(Canvas canvas, long now) {

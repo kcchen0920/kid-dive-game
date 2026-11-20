@@ -1,3 +1,5 @@
+import { renderCreature } from './creatureRenderer.js';
+
 export class AquariumGame {
   constructor(canvas, state, sound, onCoinsUpdated) {
     this.canvas = canvas;
@@ -26,24 +28,27 @@ export class AquariumGame {
     }));
 
     const fishDefs = [
-      ['小丑魚 尼莫', '#FF6D00', '#FFFFFF', 56, false],
-      ['藍倒吊 多莉', '#1565C0', '#FFD600', 62, false],
-      ['黃金蝶魚', '#FFEA00', '#FFFFFF', 58, false],
-      ['Baby Shark', '#FFD166', '#FFFFFF', 98, false],
-      ['綠海龜 奔奔', '#2E7D32', '#FFD54F', 92, true],
-      ['深海安康魚', '#37474F', '#00E5FF', 86, false],
+      ['CLOWNFISH', '小丑魚 尼莫', '#FF6D00', '#FFFFFF', 64, 38],
+      ['BLUE_TANG', '藍倒吊 多莉', '#1565C0', '#FFD600', 70, 44],
+      ['YELLOW_TANG', '黃金蝶魚', '#FFEA00', '#FFFFFF', 66, 46],
+      ['BABY_SHARK', 'Baby Shark', '#FFD166', '#FFFFFF', 105, 48],
+      ['TURTLE', '綠海龜 奔奔', '#2E7D32', '#FFD54F', 98, 60],
+      ['ANGLERFISH', '深海安康魚', '#37474F', '#00E5FF', 94, 62],
+      ['PLESIOSAURUS', '蛇頸龍 小寶', '#00897B', '#FFF176', 112, 48],
+      ['DUNKLEOSTEUS', '鐵甲鄧氏魚', '#5D4037', '#FFB300', 124, 56],
     ];
-    this.fishes = fishDefs.map(([name, c1, c2, size, isTurtle]) => {
+    this.fishes = fishDefs.map(([species, name, primaryColor, secondaryColor, length, bodyHeight]) => {
       const dir = Math.random() < 0.5 ? 1 : -1;
       return {
-        name, c1, c2, size, isTurtle,
-        x: 150 + Math.random() * 500,
+        species, name, primaryColor, secondaryColor, length, bodyHeight, size: length,
+        x: 180 + Math.random() * 440,
         y: 140 + Math.random() * 280,
         vx: dir * (55 + Math.random() * 55),
         facing: dir,
-        phase: Math.random() * 6.28,
+        swimPhase: Math.random() * 6.28,
         spin: 0,
         isSpinning: false,
+        chompTimer: 0,
       };
     });
 
@@ -157,7 +162,8 @@ export class AquariumGame {
     });
 
     for (const f of this.fishes) {
-      f.phase += dt * 4;
+      f.swimPhase += dt * 4;
+      if (f.chompTimer > 0) f.chompTimer = Math.max(0, f.chompTimer - dt);
       if (f.isSpinning) {
         f.spin += 720 * dt;
         if (f.spin >= 360) { f.isSpinning = false; f.spin = 0; }
@@ -182,6 +188,7 @@ export class AquariumGame {
           nearest.eaten = true;
           f.isSpinning = true;
           f.spin = 0;
+          f.chompTimer = 0.55;
           this.hearts.push({ x: f.x, y: f.y - 24, vy: -65, symbol: '❤️', size: 28, alpha: 1, spawn: now });
           this.hearts.push({ x: f.x + 22, y: f.y - 40, vy: -80, symbol: '+5 🪙', size: 22, alpha: 1, spawn: now });
           this.state.coins += 5;
@@ -190,11 +197,13 @@ export class AquariumGame {
           this.sound.playCatch();
         }
       } else {
+        const marginX = (f.species === 'ELASMOSAURUS' || f.species === 'PLESIOSAURUS' || f.species === 'DUNKLEOSTEUS')
+          ? Math.max(92, f.length * 0.85) : 58;
         f.x += f.vx * dt;
-        f.y += Math.sin(f.phase) * 0.7;
-        if (f.x < this.tankL + 55) { f.x = this.tankL + 55; f.vx = Math.abs(f.vx); f.facing = 1; }
-        else if (f.x > this.tankR - 55) { f.x = this.tankR - 55; f.vx = -Math.abs(f.vx); f.facing = -1; }
-        f.y = Math.max(this.tankT + 50, Math.min(this.tankB - 60, f.y));
+        f.y += Math.sin(f.swimPhase) * 0.7;
+        if (f.x < this.tankL + marginX) { f.x = this.tankL + marginX; f.vx = Math.abs(f.vx); f.facing = 1; }
+        else if (f.x > this.tankR - marginX) { f.x = this.tankR - marginX; f.vx = -Math.abs(f.vx); f.facing = -1; }
+        f.y = Math.max(this.tankT + 56, Math.min(this.tankB - 62, f.y));
       }
     }
   }
@@ -234,22 +243,9 @@ export class AquariumGame {
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Fishes
+    // Fishes (shared 1-second silhouette CreatureRenderer)
     for (const f of this.fishes) {
-      ctx.save();
-      ctx.translate(f.x, f.y);
-      ctx.scale(f.facing, 1);
-      if (f.isSpinning) ctx.rotate((f.spin * Math.PI) / 180);
-      const hl = f.size / 2;
-      const hh = f.size * 0.34;
-      const tail = Math.sin(f.phase) * 7;
-      ctx.fillStyle = f.c1;
-      ctx.beginPath(); ctx.ellipse(0, 0, hl * 0.85, hh, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = f.c2;
-      ctx.beginPath(); ctx.moveTo(-hl * 0.65, 0); ctx.lineTo(-hl * 1.15 + tail, -hh * 0.8); ctx.lineTo(-hl * 1.15 + tail, hh * 0.8); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(hl * 0.55, -hh * 0.2, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(hl * 0.57, -hh * 0.2, 2.5, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
+      renderCreature(ctx, f, { now, deepGlow: 0, drawStatus: false });
     }
 
     // Hearts

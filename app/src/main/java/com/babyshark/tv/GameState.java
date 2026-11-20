@@ -21,6 +21,7 @@ public class GameState {
     public int tunaCount;
     public int greatSharkCount;
     public int anglerfishCount;
+    public int dunkleosteusCount;
     public int pearlCount;
 
     public static final int MAX_TIER = 8;
@@ -52,6 +53,7 @@ public class GameState {
         tunaCount = prefs.getInt("tunaCount", 0);
         greatSharkCount = prefs.getInt("greatSharkCount", 0);
         anglerfishCount = prefs.getInt("anglerfishCount", 0);
+        dunkleosteusCount = prefs.getInt("dunkleosteusCount", 0);
         pearlCount = prefs.getInt("pearlCount", 0);
     }
 
@@ -74,6 +76,7 @@ public class GameState {
             .putInt("tunaCount", tunaCount)
             .putInt("greatSharkCount", greatSharkCount)
             .putInt("anglerfishCount", anglerfishCount)
+            .putInt("dunkleosteusCount", dunkleosteusCount)
             .putInt("pearlCount", pearlCount)
             .apply();
     }
@@ -89,6 +92,7 @@ public class GameState {
         tunaCount = 0;
         greatSharkCount = 0;
         anglerfishCount = 0;
+        dunkleosteusCount = 0;
         pearlCount = 0;
         currentBasket.clear();
         save();
@@ -124,6 +128,8 @@ public class GameState {
             greatSharkCount++;
         } else if (name.contains("安康") || name.contains("Anglerfish")) {
             anglerfishCount++;
+        } else if (name.contains("鄧氏魚") || name.contains("Dunkleosteus")) {
+            dunkleosteusCount++;
         }
         save();
     }

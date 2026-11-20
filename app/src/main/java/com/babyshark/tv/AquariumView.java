@@ -65,18 +65,21 @@ public class AquariumView extends View {
     private final List<AirBubble> airBubbles = new ArrayList<>();
 
     // Aquarium Swimming Fish
+    private final CreatureRenderer creatureRenderer = new CreatureRenderer();
+
     private static class AquariumFish {
+        DiverGameView.RealisticFish.Species species = DiverGameView.RealisticFish.Species.CLOWNFISH;
         String name;
         int color;
         int secondaryColor;
         float x, y, vx, vy;
         float size;
+        float bodyHeight;
         float facing = 1f;
         float swimPhase = 0f;
         float spinAngle = 0f;
+        float chompTimer = 0f;
         boolean isSpinning = false;
-        boolean isTurtle = false;
-        boolean isShark = false;
     }
     private final List<AquariumFish> aquariumFishes = new ArrayList<>();
 
@@ -108,28 +111,29 @@ public class AquariumView extends View {
             airBubbles.add(b);
         }
 
-        // 2. Populate Happy Aquarium Fishes
-        addFish("小丑魚 尼莫", 0xFFFF6D00, 0xFFFFFFFF, 65f, false, false);
-        addFish("小丑魚 多莉伴侶", 0xFFFF8F00, 0xFFFFFFFF, 60f, false, false);
-        addFish("藍倒吊 多莉", 0xFF1565C0, 0xFFFFD600, 72f, false, false);
-        addFish("黃金蝶魚", 0xFFFFEA00, 0xFFFFFFFF, 68f, false, false);
-        addFish("Baby Shark 小鯊魚", 0xFFFFD166, 0xFFFFFFFF, 120f, false, true);
-        addFish("海月水母", 0xCCBA68C8, 0xEE7B1FA2, 65f, false, false);
-        addFish("深海安康魚 (特邀來客)", 0xFF37474F, 0xFF00E5FF, 110f, false, false);
-        addFish("綠海龜 奔奔", 0xFF2E7D32, 0xFFFFD54F, 115f, true, false);
+        // 2. Populate Happy Aquarium Fishes (including Prehistoric Guests!)
+        addFish(DiverGameView.RealisticFish.Species.CLOWNFISH, "小丑魚 尼莫", 0xFFFF6D00, 0xFFFFFFFF, 72f, 44f);
+        addFish(DiverGameView.RealisticFish.Species.BLUE_TANG, "藍倒吊 多莉", 0xFF1565C0, 0xFFFFD600, 78f, 48f);
+        addFish(DiverGameView.RealisticFish.Species.YELLOW_TANG, "黃金蝶魚", 0xFFFFEA00, 0xFFFFFFFF, 74f, 52f);
+        addFish(DiverGameView.RealisticFish.Species.BABY_SHARK, "Baby Shark 小鯊魚", 0xFFFFD166, 0xFFFFFFFF, 120f, 56f);
+        addFish(DiverGameView.RealisticFish.Species.JELLYFISH, "海月水母", 0xCCBA68C8, 0xEE7B1FA2, 68f, 74f);
+        addFish(DiverGameView.RealisticFish.Species.ANGLERFISH, "深海安康魚", 0xFF37474F, 0xFF00E5FF, 110f, 72f);
+        addFish(DiverGameView.RealisticFish.Species.TURTLE, "綠海龜 奔奔", 0xFF2E7D32, 0xFFFFD54F, 115f, 70f);
+        addFish(DiverGameView.RealisticFish.Species.PLESIOSAURUS, "蛇頸龍 小寶", 0xFF00897B, 0xFFFFF176, 130f, 56f);
+        addFish(DiverGameView.RealisticFish.Species.DUNKLEOSTEUS, "鐵甲鄧氏魚", 0xFF5D4037, 0xFFFFB300, 145f, 66f);
 
         lastTime = SystemClock.uptimeMillis();
     }
 
-    private void addFish(String name, int c1, int c2, float size, boolean isTurtle, boolean isShark) {
+    private void addFish(DiverGameView.RealisticFish.Species sp, String name, int c1, int c2, float size, float bh) {
         AquariumFish f = new AquariumFish();
+        f.species = sp;
         f.name = name;
         f.color = c1;
         f.secondaryColor = c2;
         f.size = size;
-        f.isTurtle = isTurtle;
-        f.isShark = isShark;
-        f.x = 250f + random.nextFloat() * 1420f;
+        f.bodyHeight = bh;
+        f.x = 280f + random.nextFloat() * 1360f;
         f.y = 260f + random.nextFloat() * 580f;
         f.vx = (random.nextBoolean() ? 1f : -1f) * (60f + random.nextFloat() * 60f);
         f.facing = f.vx > 0 ? 1f : -1f;
@@ -294,6 +298,7 @@ public class AquariumView extends View {
         // 4. Fish AI & Feeding
         for (AquariumFish f : aquariumFishes) {
             f.swimPhase += dt * 4.5f;
+            if (f.chompTimer > 0f) f.chompTimer = Math.max(0f, f.chompTimer - dt);
 
             if (f.isSpinning) {
                 f.spinAngle += dt * 720f;
@@ -329,6 +334,7 @@ public class AquariumView extends View {
                     nearestPellet.eaten = true;
                     f.isSpinning = true;
                     f.spinAngle = 0f;
+                    f.chompTimer = 0.55f;
 
                     // Spawn Heart & Coin Bubbles!
                     HeartBubble hb = new HeartBubble();
@@ -358,15 +364,19 @@ public class AquariumView extends View {
                     SoundManager.get(getContext()).playCatch();
                 }
             } else {
-                // Normal calm swimming
+                // Normal calm swimming (extra margin for long-neck dinos & Dunkleosteus)
+                float marginX = (f.species == DiverGameView.RealisticFish.Species.ELASMOSAURUS
+                        || f.species == DiverGameView.RealisticFish.Species.PLESIOSAURUS
+                        || f.species == DiverGameView.RealisticFish.Species.DUNKLEOSTEUS)
+                        ? Math.max(115f, f.size * 0.9f) : 80f;
                 f.x += f.vx * dt;
                 f.y += (float) Math.sin(f.swimPhase) * 0.8f;
-                if (f.x < tankL + 80f) {
-                    f.x = tankL + 80f;
+                if (f.x < tankL + marginX) {
+                    f.x = tankL + marginX;
                     f.vx = Math.abs(f.vx);
                     f.facing = 1f;
-                } else if (f.x > tankR - 80f) {
-                    f.x = tankR - 80f;
+                } else if (f.x > tankR - marginX) {
+                    f.x = tankR - marginX;
                     f.vx = -Math.abs(f.vx);
                     f.facing = -1f;
                 }
@@ -419,7 +429,7 @@ public class AquariumView extends View {
 
         // Swimming Aquarium Fishes
         for (AquariumFish f : aquariumFishes) {
-            renderFish(canvas, f);
+            renderFish(canvas, f, now);
         }
 
         // Rising Heart & Coin Bubbles
@@ -536,63 +546,11 @@ public class AquariumView extends View {
         canvas.drawRoundRect(cx - 25f, base - 70f, cx + 25f, base, 12f, 12f, paint);
     }
 
-    private void renderFish(Canvas canvas, AquariumFish f) {
-        canvas.save();
-        canvas.translate(f.x, f.y);
-        canvas.scale(f.facing, 1.0f);
-        if (f.isSpinning) {
-            canvas.rotate(f.spinAngle);
-        }
-
-        float halfL = f.size / 2f;
-        float halfH = f.size * 0.35f;
-        float tailWave = (float) Math.sin(f.swimPhase) * 8f;
-
-        paint.setColor(f.color);
-        if (f.isTurtle) {
-            // Cute Green Sea Turtle
-            paint.setColor(0xFF2E7D32);
-            canvas.drawOval(new RectF(-halfL, -halfH * 1.2f, halfL * 0.8f, halfH * 1.2f), paint);
-            // Shell Hexagon Pattern
-            paint.setColor(0xFFFFD54F);
-            canvas.drawCircle(0, 0, halfH * 0.6f, paint);
-            // Head
-            paint.setColor(0xFF388E3C);
-            canvas.drawCircle(halfL * 0.95f, 0, 12f, paint);
-            // Eye
-            paint.setColor(Color.BLACK);
-            canvas.drawCircle(halfL * 1.05f, -3f, 2.5f, paint);
-            // Flippers
-            canvas.drawLine(-halfL * 0.2f, -halfH, halfL * 0.4f, -halfH * 2.2f, paint);
-            canvas.drawLine(-halfL * 0.2f, halfH, halfL * 0.4f, halfH * 2.2f, paint);
-        } else {
-            // Fish Body
-            Path body = new Path();
-            body.moveTo(halfL, 0);
-            body.quadTo(0, -halfH * 1.15f, -halfL * 0.6f, -halfH * 0.3f);
-            body.lineTo(-halfL + tailWave, 0);
-            body.lineTo(-halfL * 0.6f, halfH * 0.3f);
-            body.quadTo(0, halfH * 1.15f, halfL, 0);
-            body.close();
-            canvas.drawPath(body, paint);
-
-            // Tail
-            paint.setColor(f.secondaryColor);
-            Path tail = new Path();
-            tail.moveTo(-halfL * 0.6f, 0);
-            tail.lineTo(-halfL * 1.25f + tailWave, -halfH * 0.8f);
-            tail.lineTo(-halfL * 1.05f + tailWave, 0);
-            tail.lineTo(-halfL * 1.25f + tailWave, halfH * 0.8f);
-            tail.close();
-            canvas.drawPath(tail, paint);
-
-            // Eye
-            paint.setColor(Color.WHITE);
-            canvas.drawCircle(halfL * 0.65f, -halfH * 0.25f, 5.5f, paint);
-            paint.setColor(Color.BLACK);
-            canvas.drawCircle(halfL * 0.67f, -halfH * 0.25f, 2.8f, paint);
-        }
-
-        canvas.restore();
+    private void renderFish(Canvas canvas, AquariumFish f, long now) {
+        creatureRenderer.renderCreature(
+                canvas, f.species, f.x, f.y, f.facing, f.size, f.bodyHeight, f.swimPhase,
+                f.color, f.secondaryColor, false, 0f, f.chompTimer, 0f,
+                f.isSpinning ? f.spinAngle : 0f, now
+        );
     }
 }

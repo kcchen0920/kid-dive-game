@@ -287,86 +287,131 @@ function drawDunkleosteus(ctx, f, hl, hh, phase, tail, rimStroke, rimWidth) {
   ctx.beginPath(); ctx.arc(ex + 2.8, ey - 2.0, 1.8, 0, Math.PI * 2); ctx.fill();
 }
 
+function drawRealisticFlipper(ctx, x, y, len, wid, ang, fill, stroke, isFar) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(ang);
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(0, -wid * 0.34);
+  ctx.quadraticCurveTo(len * 0.46, -wid * 0.82, len, 0);
+  ctx.quadraticCurveTo(len * 0.36, wid * 0.88, -len * 0.12, wid * 0.34);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = isFar ? 'rgba(0,0,0,0.34)' : stroke;
+  ctx.lineWidth = isFar ? 1.6 : 2.1;
+  ctx.stroke();
+  if (!isFar) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.26)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(len * 0.12, 0);
+    ctx.lineTo(len * 0.72, wid * 0.08);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawNaturalEye(ctx, ex, ey, r, ringColor) {
+  if (ringColor) {
+    ctx.fillStyle = ringColor;
+    ctx.beginPath(); ctx.arc(ex, ey, r * 1.38, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.2; ctx.stroke();
+  }
+  ctx.fillStyle = '#FFFDE7';
+  ctx.beginPath(); ctx.arc(ex, ey, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.42)'; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.fillStyle = '#111827';
+  ctx.beginPath(); ctx.arc(ex + r * 0.18, ey, r * 0.54, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath(); ctx.arc(ex + r * 0.36, ey - r * 0.32, r * 0.24, 0, Math.PI * 2); ctx.fill();
+}
+
 function drawMosasaurus(ctx, f, hl, hh, phase, rimStroke, rimWidth) {
   const s1 = Math.sin(phase) * hh * 0.24;
   const s2 = Math.sin(phase - 1.3) * hh * 0.38;
-  const pad = Math.sin(phase * 0.9) * 0.26;
-  const jawOpen = 0.06 + 0.10 * Math.abs(Math.sin(phase * 0.55));
+  const pad = Math.sin(phase * 0.9) * 0.24;
+  const jawOpen = 0.05 + 0.09 * Math.abs(Math.sin(phase * 0.55));
 
-  // 1. Two-segment Sea-Snake Long Tail with Upturned Tail Fluke
-  ctx.fillStyle = '#006064';
+  // Far-side flippers (3D depth layer)
+  drawRealisticFlipper(ctx, hl * 0.22, hh * 0.44, hl * 0.36, hh * 0.30, 0.98 - pad, 'rgba(14, 46, 54, 0.76)', rimStroke, true);
+  drawRealisticFlipper(ctx, -hl * 0.26, hh * 0.40, hl * 0.28, hh * 0.24, 1.08 + pad, 'rgba(14, 46, 54, 0.76)', rimStroke, true);
+
+  // 1. Two-segment Sea-Lizard Long Tail with Authentic Crescent Tail Fluke
+  ctx.fillStyle = '#1C4B57';
   ctx.beginPath();
-  ctx.moveTo(-hl * 0.45, -hh * 0.42);
-  ctx.quadraticCurveTo(-hl * 0.92, -hh * 0.28 + s1, -hl * 1.48, s2 - hh * 0.12);
-  ctx.lineTo(-hl * 1.62, s2 - hh * 0.65);
-  ctx.quadraticCurveTo(-hl * 1.44, s2 + hh * 0.18, -hl * 1.56, s2 + hh * 0.42);
-  ctx.quadraticCurveTo(-hl * 0.95, hh * 0.32 + s1, -hl * 0.45, hh * 0.40);
+  ctx.moveTo(-hl * 0.45, -hh * 0.40);
+  ctx.quadraticCurveTo(-hl * 0.92, -hh * 0.26 + s1, -hl * 1.46, s2 - hh * 0.10);
+  ctx.quadraticCurveTo(-hl * 1.56, s2 - hh * 0.55, -hl * 1.66, s2 - hh * 0.74);
+  ctx.quadraticCurveTo(-hl * 1.44, s2 + hh * 0.06, -hl * 1.58, s2 + hh * 0.68);
+  ctx.quadraticCurveTo(-hl * 1.38, s2 + hh * 0.32, -hl * 1.24, s2 + hh * 0.16);
+  ctx.quadraticCurveTo(-hl * 0.94, hh * 0.32 + s1, -hl * 0.45, hh * 0.38);
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // 2. Elongated Streamlined Body
-  ctx.fillStyle = '#006064';
+  // 2. Elongated Muscular Mosasaur Torso
+  ctx.fillStyle = '#1C4B57';
   ctx.beginPath();
   ctx.moveTo(hl * 0.55, -hh * 0.46);
-  ctx.bezierCurveTo(hl * 0.15, -hh * 0.88, -hl * 0.25, -hh * 0.78, -hl * 0.52, -hh * 0.36);
-  ctx.lineTo(-hl * 0.52, hh * 0.38);
-  ctx.bezierCurveTo(-hl * 0.25, hh * 0.74, hl * 0.15, hh * 0.78, hl * 0.55, hh * 0.42);
+  ctx.bezierCurveTo(hl * 0.15, -hh * 0.86, -hl * 0.25, -hh * 0.76, -hl * 0.52, -hh * 0.36);
+  ctx.lineTo(-hl * 0.52, hh * 0.36);
+  ctx.bezierCurveTo(-hl * 0.25, hh * 0.72, hl * 0.15, hh * 0.76, hl * 0.55, hh * 0.42);
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = rimWidth;
   ctx.stroke();
 
-  // Creamy White Belly
-  ctx.fillStyle = '#E0F7FA';
+  // Countershaded pale belly & natural deep-sea tiger bands
+  ctx.fillStyle = 'rgba(218, 236, 240, 0.52)';
   ctx.beginPath();
   ctx.ellipse(hl * 0.02, hh * 0.34, hl * 0.48, hh * 0.30, 0, 0, Math.PI);
   ctx.fill();
+  ctx.strokeStyle = 'rgba(10, 26, 34, 0.36)';
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  for (let i = -2; i <= 2; i++) {
+    const bx = i * hl * 0.19;
+    ctx.beginPath();
+    ctx.moveTo(bx, -hh * 0.62);
+    ctx.quadraticCurveTo(bx - 6, -hh * 0.18, bx + 4, hh * 0.14);
+    ctx.stroke();
+  }
 
-  // Neon Cyan Serrated Dorsal Ridge Scales
-  ctx.fillStyle = '#26C6DA';
+  // Natural Subtle Dorsal Ridge Crest (organic scales, not neon)
+  ctx.fillStyle = '#336B78';
   ctx.beginPath();
-  ctx.moveTo(hl * 0.42, -hh * 0.52);
+  ctx.moveTo(hl * 0.42, -hh * 0.50);
   for (let i = 0; i < 8; i++) {
     const sx = hl * 0.36 - i * hl * 0.18;
-    const sy = -hh * (0.72 - i * 0.05) + (i > 4 ? s1 * 0.4 : 0);
-    ctx.lineTo(sx, sy - hh * 0.28);
+    const sy = -hh * (0.68 - i * 0.05) + (i > 4 ? s1 * 0.4 : 0);
+    ctx.lineTo(sx, sy - hh * 0.22);
     ctx.lineTo(sx - hl * 0.09, sy + hh * 0.04);
   }
   ctx.closePath();
   ctx.fill();
 
-  // Four Swept Paddles
-  ctx.fillStyle = '#00838F';
-  ctx.strokeStyle = '#26C6DA';
-  ctx.lineWidth = 2;
-  ctx.save(); ctx.translate(hl * 0.22, hh * 0.56); ctx.rotate(0.45 + pad);
-  ctx.beginPath(); ctx.ellipse(0, hh * 0.22, hl * 0.17, hh * 0.36, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
-  ctx.save(); ctx.translate(-hl * 0.24, hh * 0.50); ctx.rotate(-0.35 - pad);
-  ctx.beginPath(); ctx.ellipse(0, hh * 0.18, hl * 0.14, hh * 0.30, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
-
-  // 3. Long Crocodile-Style Giant Jaw (28% of total length)
-  // Upper snout
-  ctx.fillStyle = '#006064';
+  // 3. Long Crocodile-Style Giant Skull (upper snout + hinged lower jaw)
+  ctx.fillStyle = '#1C4B57';
   ctx.beginPath();
   ctx.moveTo(hl * 0.46, -hh * 0.54);
-  ctx.quadraticCurveTo(hl * 0.85, -hh * 0.58, hl * 1.12, -hh * 0.14);
+  ctx.quadraticCurveTo(hl * 0.85, -hh * 0.56, hl * 1.12, -hh * 0.14);
   ctx.lineTo(hl * 1.08, hh * 0.06);
   ctx.lineTo(hl * 0.46, hh * 0.08);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#26C6DA';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = rimStroke;
+  ctx.lineWidth = 2.2;
   ctx.stroke();
 
-  // Friendly Rounded White Teeth on upper jaw
-  ctx.fillStyle = '#FFFFFF';
+  // Friendly Blunted Rounded Teeth on upper jaw
+  ctx.fillStyle = '#F5F5F5';
   for (let t = 0; t < 5; t++) {
     ctx.beginPath();
-    ctx.arc(hl * 0.58 + t * hl * 0.10, hh * 0.09, 3.2, 0, Math.PI * 2);
+    ctx.arc(hl * 0.58 + t * hl * 0.10, hh * 0.09, 2.7, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -374,431 +419,440 @@ function drawMosasaurus(ctx, f, hl, hh, phase, rimStroke, rimWidth) {
   ctx.save();
   ctx.translate(hl * 0.48, hh * 0.14);
   ctx.rotate(jawOpen);
-  ctx.fillStyle = '#E0F7FA';
+  ctx.fillStyle = '#CFE4E8';
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.lineTo(hl * 0.56, hh * 0.02);
   ctx.quadraticCurveTo(hl * 0.46, hh * 0.34, 0, hh * 0.30);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#006064';
+  ctx.strokeStyle = rimStroke;
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.restore();
 
-  // Bright Eye
-  ctx.fillStyle = '#FFF176';
-  ctx.beginPath(); ctx.arc(hl * 0.64, -hh * 0.26, 7.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#000000';
-  ctx.beginPath(); ctx.arc(hl * 0.66, -hh * 0.26, 3.6, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath(); ctx.arc(hl * 0.68, -hh * 0.30, 1.6, 0, Math.PI * 2); ctx.fill();
+  // Nostril, subtle brow ridge & natural friendly eye
+  ctx.fillStyle = 'rgba(0,0,0,0.48)';
+  ctx.beginPath(); ctx.ellipse(hl * 0.96, -hh * 0.12, 3.0, 1.8, -0.15, 0, Math.PI * 2); ctx.fill();
+  drawNaturalEye(ctx, hl * 0.64, -hh * 0.24, 6.2, null);
+
+  // Near-side flippers (larger forelimb, smaller hindlimb)
+  drawRealisticFlipper(ctx, hl * 0.18, hh * 0.46, hl * 0.42, hh * 0.34, 0.76 + pad, '#2E6A78', rimStroke, false);
+  drawRealisticFlipper(ctx, -hl * 0.30, hh * 0.42, hl * 0.32, hh * 0.26, 0.90 - pad, '#2E6A78', rimStroke, false);
 }
 
 function drawLiopleurodon(ctx, f, hl, hh, phase, tail, rimStroke, rimWidth) {
-  const fPad = Math.sin(phase) * 0.34;
-  const rPad = Math.sin(phase + Math.PI) * 0.34;
+  const fPad = Math.sin(phase) * 0.30;
+  const rPad = Math.sin(phase + Math.PI) * 0.30;
 
   // 1. Short Thick Tail
-  ctx.fillStyle = '#455A64';
+  ctx.fillStyle = '#37474F';
   ctx.beginPath();
   ctx.moveTo(-hl * 0.55, -hh * 0.34);
-  ctx.quadraticCurveTo(-hl * 0.88, tail * 0.4, -hl * 1.10, tail * 0.7);
+  ctx.quadraticCurveTo(-hl * 0.88, tail * 0.4, -hl * 1.12, tail * 0.7);
   ctx.quadraticCurveTo(-hl * 0.86, hh * 0.36, -hl * 0.55, hh * 0.34);
   ctx.closePath();
   ctx.fill();
-
-  // 2. Massive Diamond Flippers (Back Pair)
-  ctx.fillStyle = '#37474F';
-  ctx.strokeStyle = '#FF8A65';
+  ctx.strokeStyle = rimStroke;
   ctx.lineWidth = 2;
-  ctx.save(); ctx.translate(hl * 0.10, -hh * 0.65); ctx.rotate(-0.45 - fPad * 0.6);
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-hl * 0.16, -hh * 0.85); ctx.lineTo(-hl * 0.34, -hh * 0.22); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
-  ctx.save(); ctx.translate(-hl * 0.36, -hh * 0.56); ctx.rotate(-0.35 - rPad * 0.6);
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-hl * 0.15, -hh * 0.75); ctx.lineTo(-hl * 0.30, -hh * 0.18); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  ctx.stroke();
 
-  // 3. Chunky Stocky Torso + Huge Triangular Head (35% length!)
-  ctx.fillStyle = '#455A64';
+  // 2. Far-side Wing-Like Flippers (anti-phase underwater flight)
+  drawRealisticFlipper(ctx, hl * 0.12, hh * 0.46, hl * 0.54, hh * 0.36, 1.10 - fPad, 'rgba(34, 46, 54, 0.78)', rimStroke, true);
+  drawRealisticFlipper(ctx, -hl * 0.34, hh * 0.42, hl * 0.50, hh * 0.34, 1.16 - rPad, 'rgba(34, 46, 54, 0.78)', rimStroke, true);
+
+  // 3. Barrel Torso + Thick Short Neck + Huge Triangular Head (28-35% length)
+  ctx.fillStyle = '#37474F';
   ctx.beginPath();
-  ctx.moveTo(hl * 1.12, 0);
-  ctx.lineTo(hl * 0.42, -hh * 0.76);
-  ctx.bezierCurveTo(hl * 0.05, -hh * 1.02, -hl * 0.38, -hh * 0.88, -hl * 0.64, -hh * 0.32);
+  ctx.moveTo(hl * 1.12, hh * 0.02);
+  ctx.quadraticCurveTo(hl * 0.80, -hh * 0.44, hl * 0.44, -hh * 0.62);
+  ctx.bezierCurveTo(hl * 0.05, -hh * 0.98, -hl * 0.38, -hh * 0.86, -hl * 0.64, -hh * 0.32);
   ctx.lineTo(-hl * 0.64, hh * 0.34);
-  ctx.bezierCurveTo(-hl * 0.38, hh * 0.88, hl * 0.05, hh * 0.96, hl * 0.44, hh * 0.66);
-  ctx.lineTo(hl * 1.12, hh * 0.12);
+  ctx.bezierCurveTo(-hl * 0.38, hh * 0.86, hl * 0.05, hh * 0.92, hl * 0.44, hh * 0.62);
+  ctx.quadraticCurveTo(hl * 0.82, hh * 0.40, hl * 1.12, hh * 0.14);
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = rimWidth;
   ctx.stroke();
 
-  // Light Gold Belly
-  ctx.fillStyle = '#FFF3E0';
+  // Orca-like bright countershaded belly & subtle natural flank mottling
+  ctx.fillStyle = 'rgba(232, 240, 242, 0.56)';
   ctx.beginPath();
-  ctx.ellipse(-hl * 0.05, hh * 0.44, hl * 0.48, hh * 0.34, 0, 0, Math.PI);
+  ctx.moveTo(hl * 1.02, hh * 0.16);
+  ctx.bezierCurveTo(hl * 0.38, hh * 0.84, -hl * 0.30, hh * 0.78, -hl * 0.62, hh * 0.30);
+  ctx.quadraticCurveTo(hl * 0.10, hh * 0.24, hl * 1.02, hh * 0.16);
+  ctx.closePath();
   ctx.fill();
+  ctx.fillStyle = 'rgba(144, 164, 174, 0.34)';
+  ctx.beginPath(); ctx.ellipse(-hl * 0.08, -hh * 0.28, hl * 0.24, hh * 0.20, -0.18, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(hl * 0.22, -hh * 0.32, hl * 0.14, hh * 0.15, -0.15, 0, Math.PI * 2); ctx.fill();
 
-  // Bright Coral-Orange Patches (high contrast!)
-  ctx.fillStyle = '#FF8A65';
-  for (const [sx, sy, rx, ry] of [
-    [hl * 0.24, -hh * 0.42, hl * 0.14, hh * 0.20],
-    [-hl * 0.10, -hh * 0.46, hl * 0.16, hh * 0.22],
-    [-hl * 0.42, -hh * 0.26, hl * 0.12, hh * 0.18],
-  ]) {
-    ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, -0.2, 0, Math.PI * 2); ctx.fill();
-  }
-
-  // Massive Diamond Flippers (Front Pair, 1.2x body height!)
-  ctx.fillStyle = '#546E7A';
-  ctx.strokeStyle = '#FF8A65';
-  ctx.lineWidth = 2.4;
-  ctx.save(); ctx.translate(hl * 0.14, hh * 0.56); ctx.rotate(0.28 + fPad);
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(hl * 0.12, hh * 0.62); ctx.lineTo(-hl * 0.16, hh * 1.05); ctx.lineTo(-hl * 0.24, hh * 0.34); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
-  ctx.save(); ctx.translate(-hl * 0.32, hh * 0.52); ctx.rotate(-0.18 + rPad);
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(hl * 0.08, hh * 0.56); ctx.lineTo(-hl * 0.16, hh * 0.94); ctx.lineTo(-hl * 0.22, hh * 0.30); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
-
-  // Jaw line + rounded teeth
-  ctx.strokeStyle = '#FFF3E0';
-  ctx.lineWidth = 2.4;
+  // Massive jaw line + blunted rounded teeth + nostril + eye
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.moveTo(hl * 0.45, hh * 0.22);
-  ctx.lineTo(hl * 1.06, hh * 0.10);
+  ctx.moveTo(hl * 0.46, hh * 0.20);
+  ctx.lineTo(hl * 1.08, hh * 0.10);
   ctx.stroke();
   ctx.fillStyle = '#FFFFFF';
   for (let t = 0; t < 5; t++) {
-    ctx.beginPath(); ctx.arc(hl * 0.54 + t * hl * 0.11, hh * 0.20 - t * hh * 0.02, 3.0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(hl * 0.54 + t * hl * 0.11, hh * 0.19 - t * hh * 0.02, 2.6, 0, Math.PI * 2); ctx.fill();
   }
+  ctx.fillStyle = 'rgba(0,0,0,0.48)';
+  ctx.beginPath(); ctx.ellipse(hl * 0.94, -hh * 0.08, 3.2, 1.8, -0.15, 0, Math.PI * 2); ctx.fill();
+  drawNaturalEye(ctx, hl * 0.58, -hh * 0.24, 6.2, null);
 
-  // Eye on giant head
-  ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath(); ctx.arc(hl * 0.58, -hh * 0.26, 7.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#000000';
-  ctx.beginPath(); ctx.arc(hl * 0.60, -hh * 0.26, 3.8, 0, Math.PI * 2); ctx.fill();
+  // Near-side Massive Equal-Length Wing Flippers (underwater flight)
+  drawRealisticFlipper(ctx, hl * 0.10, hh * 0.52, hl * 0.60, hh * 0.38, 0.82 + fPad, '#546E7A', rimStroke, false);
+  drawRealisticFlipper(ctx, -hl * 0.36, hh * 0.46, hl * 0.56, hh * 0.36, 0.88 + rPad, '#546E7A', rimStroke, false);
 }
 
 function drawPlesiosaurus(ctx, f, hl, hh, phase, tail, rimStroke, rimWidth) {
-  const flap = Math.sin(phase * 1.1) * 0.40;
+  const flap = Math.sin(phase * 1.1) * 0.30;
+  const flap2 = Math.sin(phase * 1.1 + Math.PI * 0.7) * 0.30;
   const neckNod = Math.sin(phase * 0.8) * hh * 0.18;
 
-  // Short pointed tail
-  ctx.fillStyle = '#00897B';
+  // Short pointed reptilian tail
+  ctx.fillStyle = '#1B6B5F';
   ctx.beginPath();
   ctx.moveTo(-hl * 0.46, -hh * 0.22);
-  ctx.quadraticCurveTo(-hl * 0.85, tail * 0.4, -hl * 1.05, tail * 0.6);
+  ctx.quadraticCurveTo(-hl * 0.85, tail * 0.4, -hl * 1.06, tail * 0.6);
   ctx.quadraticCurveTo(-hl * 0.82, hh * 0.28, -hl * 0.46, hh * 0.24);
   ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = rimStroke; ctx.lineWidth = 2; ctx.stroke();
 
-  // Back wing paddles
-  ctx.fillStyle = '#00695C';
-  ctx.save(); ctx.translate(hl * 0.14, -hh * 0.62); ctx.rotate(-0.55 - flap * 0.6);
-  ctx.beginPath(); ctx.ellipse(0, -hh * 0.34, hl * 0.15, hh * 0.46, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-  ctx.save(); ctx.translate(-hl * 0.26, -hh * 0.56); ctx.rotate(-0.45 - flap * 0.6);
-  ctx.beginPath(); ctx.ellipse(0, -hh * 0.30, hl * 0.13, hh * 0.40, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  // Far-side wing paddles (3D depth layer)
+  drawRealisticFlipper(ctx, hl * 0.12, hh * 0.44, hl * 0.46, hh * 0.36, 1.08 - flap, 'rgba(14, 72, 62, 0.76)', rimStroke, true);
+  drawRealisticFlipper(ctx, -hl * 0.30, hh * 0.40, hl * 0.42, hh * 0.34, 1.16 - flap2, 'rgba(14, 72, 62, 0.76)', rimStroke, true);
 
-  // Plump Turtle-Like Rounded Torso
-  ctx.fillStyle = '#00897B';
+  // Broad Teardrop Torso
+  ctx.fillStyle = '#1B6B5F';
   ctx.beginPath();
-  ctx.ellipse(-hl * 0.06, 0, hl * 0.56, hh * 0.92, 0, 0, Math.PI * 2);
+  ctx.ellipse(-hl * 0.06, 0, hl * 0.56, hh * 0.84, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = rimWidth;
   ctx.stroke();
 
-  // Light Green Belly + Lemon-Yellow Polka Dots
-  ctx.fillStyle = '#B2DFDB';
+  // Countershaded belly + natural emerald dorsal mottling
+  ctx.fillStyle = 'rgba(206, 238, 230, 0.46)';
   ctx.beginPath();
-  ctx.ellipse(-hl * 0.06, hh * 0.42, hl * 0.42, hh * 0.36, 0, 0, Math.PI);
+  ctx.ellipse(-hl * 0.06, hh * 0.40, hl * 0.42, hh * 0.34, 0, 0, Math.PI);
   ctx.fill();
-  ctx.fillStyle = '#FFF176';
-  for (const [dx, dy, r] of [[-hl * 0.26, -hh * 0.32, 7.5], [-hl * 0.04, -hh * 0.48, 8.5], [hl * 0.16, -hh * 0.24, 7], [-hl * 0.14, -hh * 0.06, 6]]) {
-    ctx.beginPath(); ctx.arc(dx, dy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(128, 203, 196, 0.32)';
+  for (const [dx, dy, rx, ry] of [[-hl * 0.26, -hh * 0.30, 9, 5.5], [-hl * 0.04, -hh * 0.44, 11, 6], [hl * 0.16, -hh * 0.24, 8, 5]]) {
+    ctx.beginPath(); ctx.ellipse(dx, dy, rx, ry, -0.15, 0, Math.PI * 2); ctx.fill();
   }
 
-  // Graceful S-Curved Mid-Long Neck (0.7x body length)
-  const headX = hl * 1.12;
-  const headY = -hh * 0.85 + neckNod;
-  ctx.strokeStyle = '#00897B';
-  ctx.lineWidth = hh * 0.48;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(hl * 0.36, -hh * 0.14);
-  ctx.bezierCurveTo(hl * 0.72, -hh * 0.12, hl * 0.76, -hh * 0.96, headX - 6, headY);
-  ctx.stroke();
-  // Belly highlight along neck
-  ctx.strokeStyle = '#B2DFDB';
-  ctx.lineWidth = hh * 0.16;
-  ctx.beginPath();
-  ctx.moveTo(hl * 0.38, hh * 0.04);
-  ctx.bezierCurveTo(hl * 0.74, hh * 0.02, hl * 0.80, -hh * 0.80, headX - 8, headY + 6);
-  ctx.stroke();
+  // Closed Double-Edged Tapering S-Curved Neck (anatomical contour, not a thick line)
+  const headX = hl * 1.10;
+  const headY = -hh * 0.72 + neckNod;
+  const c1x = hl * 0.68, c1y = -hh * 0.08 - neckNod * 0.3;
+  const c2x = hl * 0.78, c2y = -hh * 0.90 + neckNod * 0.4;
+  const rootW = hh * 0.40;
+  const tipW = hh * 0.19;
 
-  // Cute Dinosaur Head + Little Crest
-  ctx.fillStyle = '#FFF176';
+  ctx.fillStyle = '#1B6B5F';
   ctx.beginPath();
-  ctx.moveTo(headX - 8, headY - 10);
-  ctx.lineTo(headX - 18, headY - 22);
-  ctx.lineTo(headX + 2, headY - 12);
+  ctx.moveTo(hl * 0.34, -rootW);
+  ctx.bezierCurveTo(c1x, c1y - rootW * 0.65, c2x, c2y - tipW * 1.1, headX - 8, headY - tipW);
+  ctx.lineTo(headX - 8, headY + tipW);
+  ctx.bezierCurveTo(c2x + 5, c2y + tipW * 1.3, c1x + 6, c1y + rootW * 0.85, hl * 0.34, rootW);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#00897B';
+  ctx.strokeStyle = rimStroke;
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+
+  // Pale throat countershading along neck underside
+  ctx.strokeStyle = 'rgba(206, 238, 230, 0.42)';
+  ctx.lineWidth = 3.2;
   ctx.beginPath();
-  ctx.ellipse(headX + 4, headY, 22, 13, 0.1, 0, Math.PI * 2);
+  ctx.moveTo(hl * 0.38, rootW * 0.70);
+  ctx.bezierCurveTo(c1x + 4, c1y + rootW * 0.6, c2x + 3, c2y + tipW * 0.95, headX - 10, headY + tipW * 0.72);
+  ctx.stroke();
+
+  // Sculpted Rounded Plesiosaur Head + Nostril + Friendly Smile & Eye
+  ctx.fillStyle = '#1B6B5F';
+  ctx.beginPath();
+  ctx.moveTo(headX + 26, headY + 1);
+  ctx.quadraticCurveTo(headX + 10, headY - 14, headX - 16, headY - 9);
+  ctx.quadraticCurveTo(headX - 18, headY + 8, headX + 10, headY + 11);
+  ctx.quadraticCurveTo(headX + 21, headY + 8, headX + 26, headY + 1);
+  ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = 2;
   ctx.stroke();
-  // Eye & happy smile
-  ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath(); ctx.arc(headX + 10, headY - 4, 5.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#000000';
-  ctx.beginPath(); ctx.arc(headX + 11.5, headY - 4, 2.8, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#E0F2F1'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(headX + 12, headY + 2, 7, 0.15, 1.35); ctx.stroke();
+  ctx.strokeStyle = 'rgba(224, 242, 241, 0.72)'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(headX - 2, headY + 4); ctx.quadraticCurveTo(headX + 10, headY + 6, headX + 22, headY + 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath(); ctx.arc(headX + 17, headY - 2, 1.6, 0, Math.PI * 2); ctx.fill();
+  drawNaturalEye(ctx, headX + 4, headY - 3, 4.8, null);
 
-  // Large Wing-Like Front Paddles (Synchronized Underwater Flight)
-  ctx.fillStyle = '#26A69A';
-  ctx.strokeStyle = '#FFF176';
-  ctx.lineWidth = 2.2;
-  ctx.save(); ctx.translate(hl * 0.16, hh * 0.58); ctx.rotate(0.28 + flap);
-  ctx.beginPath(); ctx.ellipse(0, hh * 0.42, hl * 0.17, hh * 0.62, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
-  ctx.save(); ctx.translate(-hl * 0.28, hh * 0.54); ctx.rotate(-0.22 + flap);
-  ctx.beginPath(); ctx.ellipse(0, hh * 0.36, hl * 0.15, hh * 0.54, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
+  // Near-side broad wing paddles
+  drawRealisticFlipper(ctx, hl * 0.10, hh * 0.50, hl * 0.52, hh * 0.38, 0.78 + flap, '#2C8C7E', rimStroke, false);
+  drawRealisticFlipper(ctx, -hl * 0.32, hh * 0.44, hl * 0.46, hh * 0.35, 0.88 + flap2, '#2C8C7E', rimStroke, false);
 }
 
 function drawElasmosaurus(ctx, f, hl, hh, phase, tail, rimStroke, rimWidth) {
-  const flap = Math.sin(phase * 1.0) * 0.34;
-  const w1 = Math.sin(phase * 0.9) * hh * 0.32;
-  const w2 = Math.sin(phase * 0.9 - 1.5) * hh * 0.38;
+  const flap = Math.sin(phase * 1.0) * 0.28;
+  const flap2 = Math.sin(phase * 1.0 + Math.PI * 0.75) * 0.28;
+  const w1 = Math.sin(phase * 0.9) * hh * 0.28;
+  const w2 = Math.sin(phase * 0.9 - 1.5) * hh * 0.34;
 
-  // Tail
-  ctx.fillStyle = '#1E88E5';
+  // Tapered tail
+  ctx.fillStyle = '#1B5E9E';
   ctx.beginPath();
   ctx.moveTo(-hl * 0.50, -hh * 0.22);
   ctx.quadraticCurveTo(-hl * 0.90, tail * 0.5, -hl * 1.12, tail);
   ctx.quadraticCurveTo(-hl * 0.86, hh * 0.26, -hl * 0.50, hh * 0.24);
   ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = rimStroke; ctx.lineWidth = 2; ctx.stroke();
 
-  // Compact Gem-Blue Body (shifted slightly back to emphasize ultra-long neck)
-  ctx.fillStyle = '#1E88E5';
+  // Far-side slender sickle flippers
+  drawRealisticFlipper(ctx, hl * 0.02, hh * 0.42, hl * 0.50, hh * 0.32, 1.08 - flap, 'rgba(18, 62, 112, 0.76)', rimStroke, true);
+  drawRealisticFlipper(ctx, -hl * 0.36, hh * 0.38, hl * 0.44, hh * 0.28, 1.16 - flap2, 'rgba(18, 62, 112, 0.76)', rimStroke, true);
+
+  // Compact Streamlined Deep-Blue Body
+  ctx.fillStyle = '#1B5E9E';
   ctx.beginPath();
-  ctx.ellipse(-hl * 0.16, 0, hl * 0.48, hh * 0.82, 0, 0, Math.PI * 2);
+  ctx.ellipse(-hl * 0.16, 0, hl * 0.48, hh * 0.78, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = rimWidth;
   ctx.stroke();
 
-  // Silver-White Belly
-  ctx.fillStyle = '#E3F2FD';
+  // Countershaded silver-white belly & subtle deep-ocean dorsal speckles
+  ctx.fillStyle = 'rgba(227, 242, 253, 0.48)';
   ctx.beginPath();
-  ctx.ellipse(-hl * 0.16, hh * 0.36, hl * 0.36, hh * 0.32, 0, 0, Math.PI);
+  ctx.ellipse(-hl * 0.16, hh * 0.36, hl * 0.36, hh * 0.30, 0, 0, Math.PI);
   ctx.fill();
-
-  // Ultra-Long Swan Neck (1.4x body length, Double-S Traveling Wave!)
-  const nx0 = hl * 0.22, ny0 = -hh * 0.12;
-  const nx1 = hl * 0.72, ny1 = -hh * 0.88 + w1;
-  const nx2 = hl * 1.12, ny2 = hh * 0.22 + w2;
-  const headX = hl * 1.56;
-  const headY = -hh * 0.72 + w2 * 0.8;
-
-  ctx.strokeStyle = '#1E88E5';
-  ctx.lineWidth = hh * 0.34;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(nx0, ny0);
-  ctx.bezierCurveTo(nx1, ny1, nx2, ny2, headX - 4, headY);
-  ctx.stroke();
-
-  // Neon Sky-Blue Neck Rings (instant visual distinction from Plesiosaurus!)
-  ctx.strokeStyle = '#80D8FF';
-  ctx.lineWidth = 4;
-  for (const t of [0.22, 0.44, 0.66, 0.84]) {
-    const it = 1 - t;
-    const rx = it * it * it * nx0 + 3 * it * it * t * nx1 + 3 * it * t * t * nx2 + t * t * t * (headX - 4);
-    const ry = it * it * it * ny0 + 3 * it * it * t * ny1 + 3 * it * t * t * ny2 + t * t * t * headY;
-    ctx.beginPath();
-    ctx.arc(rx, ry, hh * 0.18, 0, Math.PI * 2);
-    ctx.stroke();
+  ctx.fillStyle = 'rgba(144, 202, 249, 0.36)';
+  for (let sp = -2; sp <= 2; sp++) {
+    ctx.beginPath(); ctx.arc(-hl * 0.16 + sp * hl * 0.13, -hh * 0.26 + (sp % 2) * 5, 3.8, 0, Math.PI * 2); ctx.fill();
   }
 
-  // Playful Tiny Head
-  ctx.fillStyle = '#1E88E5';
-  ctx.beginPath();
-  ctx.ellipse(headX + 6, headY, 17, 10, 0.08, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#80D8FF';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath(); ctx.arc(headX + 11, headY - 3, 4.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#000000';
-  ctx.beginPath(); ctx.arc(headX + 12.2, headY - 3, 2.2, 0, Math.PI * 2); ctx.fill();
+  // Closed Double-Edged Ultra-Long Swan Neck (1.4x body length, Double-S Traveling Wave)
+  const nx0 = hl * 0.20, ny0 = -hh * 0.08;
+  const nx1 = hl * 0.72, ny1 = -hh * 0.84 + w1;
+  const nx2 = hl * 1.12, ny2 = hh * 0.18 + w2;
+  const headX = hl * 1.54;
+  const headY = -hh * 0.68 + w2 * 0.8;
+  const rootW = hh * 0.32;
+  const tipW = hh * 0.13;
 
-  // Graceful Paddles
-  ctx.fillStyle = '#42A5F5';
-  ctx.strokeStyle = '#80D8FF';
-  ctx.lineWidth = 2;
-  ctx.save(); ctx.translate(hl * 0.04, hh * 0.56); ctx.rotate(0.28 + flap);
-  ctx.beginPath(); ctx.ellipse(0, hh * 0.36, hl * 0.14, hh * 0.52, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
-  ctx.save(); ctx.translate(-hl * 0.34, hh * 0.52); ctx.rotate(-0.22 - flap);
-  ctx.beginPath(); ctx.ellipse(0, hh * 0.32, hl * 0.12, hh * 0.46, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
+  ctx.fillStyle = '#1B5E9E';
+  ctx.beginPath();
+  ctx.moveTo(nx0, ny0 - rootW);
+  ctx.bezierCurveTo(nx1, ny1 - rootW * 0.6, nx2, ny2 - tipW * 1.25, headX - 6, headY - tipW);
+  ctx.lineTo(headX - 6, headY + tipW);
+  ctx.bezierCurveTo(nx2 + 4, ny2 + tipW * 1.4, nx1 + 5, ny1 + rootW * 0.75, nx0, ny0 + rootW);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = rimStroke;
+  ctx.lineWidth = 2.1;
+  ctx.stroke();
+
+  // Pale underside throat highlight
+  ctx.strokeStyle = 'rgba(227, 242, 253, 0.38)';
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(nx0 + 2, ny0 + rootW * 0.72);
+  ctx.bezierCurveTo(nx1 + 3, ny1 + rootW * 0.55, nx2 + 3, ny2 + tipW * 1.05, headX - 8, headY + tipW * 0.75);
+  ctx.stroke();
+
+  // Delicate Tiny Streamlined Head + Nostril + Friendly Eye
+  ctx.fillStyle = '#1B5E9E';
+  ctx.beginPath();
+  ctx.moveTo(headX + 20, headY + 1);
+  ctx.quadraticCurveTo(headX + 8, headY - 11, headX - 12, headY - 7);
+  ctx.quadraticCurveTo(headX - 13, headY + 7, headX + 8, headY + 9);
+  ctx.quadraticCurveTo(headX + 16, headY + 6, headX + 20, headY + 1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = rimStroke;
+  ctx.lineWidth = 1.9;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(227, 242, 253, 0.68)'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(headX, headY + 3); ctx.lineTo(headX + 17, headY + 2); ctx.stroke();
+  drawNaturalEye(ctx, headX + 4, headY - 2.2, 4.0, null);
+
+  // Near-side Graceful Sickle Flippers
+  drawRealisticFlipper(ctx, hl * 0.0, hh * 0.48, hl * 0.56, hh * 0.34, 0.78 + flap, '#2F7EC2', rimStroke, false);
+  drawRealisticFlipper(ctx, -hl * 0.38, hh * 0.44, hl * 0.48, hh * 0.30, 0.88 + flap2, '#2F7EC2', rimStroke, false);
 }
 
 function drawNothosaurus(ctx, f, hl, hh, phase, tail, rimStroke, rimWidth) {
-  const step = Math.sin(phase * 1.2) * 0.35;
+  const step = Math.sin(phase * 1.2) * 0.30;
 
-  // Long Whip-Like Tail
-  ctx.fillStyle = '#689F38';
+  const drawBluntedWebbedFoot = (fx, fy, len, wid, rot, fill, isFar) => {
+    ctx.save();
+    ctx.translate(fx, fy);
+    ctx.rotate(rot);
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.moveTo(0, -wid * 0.32);
+    ctx.lineTo(len * 0.66, -wid * 0.46);
+    ctx.quadraticCurveTo(len * 1.02, -wid * 0.40, len * 0.90, -wid * 0.12);
+    ctx.quadraticCurveTo(len * 1.06, 0, len * 0.92, wid * 0.18);
+    ctx.quadraticCurveTo(len * 0.96, wid * 0.46, len * 0.64, wid * 0.46);
+    ctx.lineTo(0, wid * 0.32);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = isFar ? 'rgba(0,0,0,0.34)' : rimStroke;
+    ctx.lineWidth = isFar ? 1.5 : 2;
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // Far-side webbed feet (3D depth)
+  drawBluntedWebbedFoot(hl * 0.24, hh * 0.40, hl * 0.32, hh * 0.30, 0.95 - step, 'rgba(54, 84, 28, 0.76)', true);
+  drawBluntedWebbedFoot(-hl * 0.28, hh * 0.38, hl * 0.30, hh * 0.28, 1.08 + step, 'rgba(54, 84, 28, 0.76)', true);
+
+  // Very Long Laterally-Flattened Swimming Tail
+  ctx.fillStyle = '#587A32';
   ctx.beginPath();
-  ctx.moveTo(-hl * 0.45, -hh * 0.24);
-  ctx.quadraticCurveTo(-hl * 1.05, tail * 0.5, -hl * 1.52, tail * 1.1);
-  ctx.quadraticCurveTo(-hl * 1.00, hh * 0.28, -hl * 0.45, hh * 0.24);
+  ctx.moveTo(-hl * 0.45, -hh * 0.26);
+  ctx.bezierCurveTo(-hl * 0.95, -hh * 0.32 + tail * 0.45, -hl * 1.32, -hh * 0.18 + tail * 0.9, -hl * 1.64, tail * 1.15);
+  ctx.bezierCurveTo(-hl * 1.30, hh * 0.26 + tail * 0.9, -hl * 0.90, hh * 0.32 + tail * 0.45, -hl * 0.45, hh * 0.26);
   ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = rimStroke; ctx.lineWidth = 2; ctx.stroke();
 
-  // Flat Sleek Sea-Lizard / Otter Torso
-  ctx.fillStyle = '#689F38';
+  // Sleek Semi-Aquatic Triassic Lizard Torso
+  ctx.fillStyle = '#587A32';
   ctx.beginPath();
-  ctx.ellipse(0, 0, hl * 0.62, hh * 0.62, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, hl * 0.60, hh * 0.58, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = rimWidth;
   ctx.stroke();
 
-  // Cream Belly
-  ctx.fillStyle = '#F1F8E9';
+  // Pale cream belly & olive natural camouflage bands
+  ctx.fillStyle = 'rgba(232, 240, 214, 0.46)';
   ctx.beginPath();
-  ctx.ellipse(0, hh * 0.26, hl * 0.48, hh * 0.24, 0, 0, Math.PI);
+  ctx.ellipse(0, hh * 0.24, hl * 0.46, hh * 0.24, 0, 0, Math.PI);
   ctx.fill();
-
-  // Bright Yellow Tiger Stripes along Back
-  ctx.strokeStyle = '#FFEE58';
+  ctx.strokeStyle = 'rgba(34, 54, 16, 0.42)';
   ctx.lineWidth = 4.5;
   ctx.lineCap = 'round';
   for (let i = -2; i <= 2; i++) {
-    const sx = i * hl * 0.20;
+    const sx = i * hl * 0.19;
     ctx.beginPath();
-    ctx.moveTo(sx, -hh * 0.54);
-    ctx.lineTo(sx - hl * 0.05, -hh * 0.06);
+    ctx.moveTo(sx, -hh * 0.48);
+    ctx.lineTo(sx - hl * 0.05, hh * 0.06);
     ctx.stroke();
   }
 
-  // Short Neck + Lizard Head
-  const headX = hl * 0.92;
-  const headY = -hh * 0.22 + Math.sin(phase * 0.9) * 5;
-  ctx.strokeStyle = '#689F38';
-  ctx.lineWidth = hh * 0.46;
+  // Closed Double-Edged Flexible Tapering Neck
+  const neckWave = Math.sin(phase * 0.9) * 5.5;
+  const headX = hl * 0.90;
+  const headY = -hh * 0.22 + neckWave;
+  ctx.fillStyle = '#587A32';
   ctx.beginPath();
-  ctx.moveTo(hl * 0.46, -hh * 0.04);
-  ctx.lineTo(headX - 8, headY);
-  ctx.stroke();
-  ctx.fillStyle = '#689F38';
-  ctx.beginPath();
-  ctx.ellipse(headX + 6, headY, 24, 12, 0.05, 0, Math.PI * 2);
+  ctx.moveTo(hl * 0.42, -hh * 0.34);
+  ctx.quadraticCurveTo(hl * 0.66, -hh * 0.40 + neckWave * 0.4, headX - 10, headY - hh * 0.22);
+  ctx.lineTo(headX - 10, headY + hh * 0.22);
+  ctx.quadraticCurveTo(hl * 0.68, hh * 0.14 + neckWave * 0.4, hl * 0.42, hh * 0.32);
+  ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = rimStroke; ctx.lineWidth = 2; ctx.stroke();
-  ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath(); ctx.arc(headX + 12, headY - 4, 5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#000000';
-  ctx.beginPath(); ctx.arc(headX + 13.5, headY - 4, 2.5, 0, Math.PI * 2); ctx.fill();
 
-  // Webbed Short Clawed Feet (distinct from wing paddles!)
-  const drawWebbedFoot = (fx, fy, rot) => {
-    ctx.save();
-    ctx.translate(fx, fy);
-    ctx.rotate(rot);
-    ctx.strokeStyle = '#558B2F';
-    ctx.lineWidth = 6;
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, hh * 0.50); ctx.stroke();
-    // Webbed 3-toe fan
-    ctx.fillStyle = '#FFEE58';
-    ctx.beginPath();
-    ctx.moveTo(0, hh * 0.44);
-    ctx.lineTo(-10, hh * 0.72);
-    ctx.lineTo(0, hh * 0.78);
-    ctx.lineTo(10, hh * 0.72);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  };
-  drawWebbedFoot(hl * 0.26, hh * 0.42, 0.30 + step);
-  drawWebbedFoot(-hl * 0.28, hh * 0.42, -0.25 - step);
+  // Flat Elongated Lizard Skull + Nostril + Friendly Eye
+  ctx.fillStyle = '#587A32';
+  ctx.beginPath();
+  ctx.moveTo(headX + 30, headY + 2);
+  ctx.quadraticCurveTo(headX + 12, headY - 12, headX - 14, headY - 9);
+  ctx.quadraticCurveTo(headX - 16, headY + 8, headX + 12, headY + 10);
+  ctx.quadraticCurveTo(headX + 24, headY + 8, headX + 30, headY + 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = rimStroke; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = 'rgba(241, 248, 233, 0.72)'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(headX - 2, headY + 4); ctx.lineTo(headX + 26, headY + 3); ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath(); ctx.arc(headX + 20, headY - 2, 1.8, 0, Math.PI * 2); ctx.fill();
+  drawNaturalEye(ctx, headX + 4, headY - 3, 4.6, null);
+
+  // Near-side Blunted Webbed Feet (distinct from wing paddles!)
+  drawBluntedWebbedFoot(hl * 0.20, hh * 0.44, hl * 0.35, hh * 0.32, 0.74 + step, '#7B9E4E', false);
+  drawBluntedWebbedFoot(-hl * 0.32, hh * 0.40, hl * 0.32, hh * 0.30, 0.86 - step, '#7B9E4E', false);
 }
 
 function drawIchthyosaurus(ctx, f, hl, hh, phase, tail, rimStroke, rimWidth) {
   // Tall Sickle Dorsal Fin
-  ctx.fillStyle = '#3949AB';
+  ctx.fillStyle = '#2B3F7C';
   ctx.beginPath();
-  ctx.moveTo(hl * 0.08, -hh * 0.76);
-  ctx.quadraticCurveTo(-hl * 0.16, -hh * 1.72, -hl * 0.36, -hh * 0.68);
+  ctx.moveTo(hl * 0.08, -hh * 0.74);
+  ctx.quadraticCurveTo(-hl * 0.14, -hh * 1.58, -hl * 0.34, -hh * 0.66);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#80DEEA';
+  ctx.strokeStyle = rimStroke;
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Symmetrical High-Speed Crescent Tail
-  ctx.fillStyle = '#3949AB';
+  // Symmetrical High-Speed Vertical Crescent Tail
+  ctx.fillStyle = '#2B3F7C';
   ctx.beginPath();
-  ctx.moveTo(-hl * 0.62, 0);
-  ctx.quadraticCurveTo(-hl * 0.94, -hh * 0.52, -hl * 1.24 + tail, -hh * 1.02);
-  ctx.quadraticCurveTo(-hl * 0.94 + tail * 0.4, 0, -hl * 1.24 + tail, hh * 1.02);
-  ctx.quadraticCurveTo(-hl * 0.94, hh * 0.52, -hl * 0.62, 0);
+  ctx.moveTo(-hl * 0.62, -hh * 0.10);
+  ctx.quadraticCurveTo(-hl * 0.94, -hh * 0.54, -hl * 1.24 + tail, -hh * 1.04);
+  ctx.quadraticCurveTo(-hl * 0.96 + tail * 0.4, 0, -hl * 1.24 + tail, hh * 1.04);
+  ctx.quadraticCurveTo(-hl * 0.94, hh * 0.54, -hl * 0.62, hh * 0.10);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#80DEEA';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = rimStroke;
+  ctx.lineWidth = 2.2;
   ctx.stroke();
 
-  // Dolphin-Like Body + Exaggerated Needle Snout (30% of length!)
-  ctx.fillStyle = '#3949AB';
+  // Far pectoral fin
+  drawRealisticFlipper(ctx, hl * 0.20, hh * 0.44, hl * 0.34, hh * 0.26, 1.02, 'rgba(28, 42, 88, 0.75)', rimStroke, true);
+
+  // Streamlined Dolphin-Like Body + Slender Pointed Rostrum Beak
+  ctx.fillStyle = '#2B3F7C';
   ctx.beginPath();
-  ctx.moveTo(hl * 1.24, hh * 0.04);
-  ctx.lineTo(hl * 0.66, -hh * 0.18);
-  ctx.bezierCurveTo(hl * 0.38, -hh * 1.05, -hl * 0.36, -hh * 0.92, -hl * 0.72, 0);
-  ctx.bezierCurveTo(-hl * 0.36, hh * 0.88, hl * 0.38, hh * 0.92, hl * 0.66, hh * 0.22);
-  ctx.lineTo(hl * 1.24, hh * 0.12);
+  ctx.moveTo(hl * 1.24, hh * 0.06);
+  ctx.quadraticCurveTo(hl * 0.90, -hh * 0.10, hl * 0.64, -hh * 0.36);
+  ctx.bezierCurveTo(hl * 0.34, -hh * 0.98, -hl * 0.34, -hh * 0.88, -hl * 0.72, 0);
+  ctx.bezierCurveTo(-hl * 0.34, hh * 0.82, hl * 0.34, hh * 0.86, hl * 0.66, hh * 0.30);
+  ctx.quadraticCurveTo(hl * 0.92, hh * 0.20, hl * 1.24, hh * 0.12);
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = rimWidth;
   ctx.stroke();
 
-  // Pure White Belly
-  ctx.fillStyle = '#FFFFFF';
+  // Natural Countershaded Pale Belly & Sleek Lateral Highlight Band
+  ctx.fillStyle = 'rgba(232, 242, 250, 0.62)';
   ctx.beginPath();
-  ctx.ellipse(hl * 0.02, hh * 0.38, hl * 0.52, hh * 0.32, 0, 0, Math.PI);
+  ctx.moveTo(hl * 1.12, hh * 0.12);
+  ctx.bezierCurveTo(hl * 0.52, hh * 0.78, -hl * 0.26, hh * 0.72, -hl * 0.68, hh * 0.08);
+  ctx.quadraticCurveTo(hl * 0.18, hh * 0.18, hl * 1.12, hh * 0.12);
+  ctx.closePath();
   ctx.fill();
-
-  // Bright Silver-Cyan Side Lightning Stripe
-  ctx.strokeStyle = '#80DEEA';
-  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(187, 222, 251, 0.45)';
+  ctx.lineWidth = 2.6;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(-hl * 0.56, 0);
-  ctx.lineTo(-hl * 0.12, -hh * 0.16);
-  ctx.lineTo(hl * 0.08, hh * 0.04);
-  ctx.lineTo(hl * 0.54, -hh * 0.14);
+  ctx.quadraticCurveTo(hl * 0.05, -hh * 0.14, hl * 0.56, -hh * 0.06);
   ctx.stroke();
 
-  // Pectoral Fin
-  ctx.fillStyle = '#5C6BC0';
-  ctx.beginPath();
-  ctx.ellipse(hl * 0.10, hh * 0.64, hl * 0.18, hh * 0.28, 0.45, 0, Math.PI * 2);
-  ctx.fill();
+  // Rostrum jaw line & nostril
+  ctx.strokeStyle = 'rgba(255,255,255,0.72)'; ctx.lineWidth = 1.7;
+  ctx.beginPath(); ctx.moveTo(hl * 0.64, hh * 0.14); ctx.lineTo(hl * 1.20, hh * 0.09); ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath(); ctx.arc(hl * 0.78, -hh * 0.04, 1.8, 0, Math.PI * 2); ctx.fill();
 
-  // Huge Sparkling Round Eye with Sclerotic Ring (signature Ichthyosaur trait!)
-  const ex = hl * 0.46;
-  const ey = -hh * 0.22;
-  ctx.fillStyle = '#80DEEA';
-  ctx.beginPath(); ctx.arc(ex, ey, 11.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath(); ctx.arc(ex, ey, 8.8, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#1A237E';
-  ctx.beginPath(); ctx.arc(ex + 1.5, ey, 5.2, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath(); ctx.arc(ex + 3.2, ey - 2.6, 2.4, 0, Math.PI * 2); ctx.fill();
+  // Near-side Streamlined Pectoral & Small Pelvic Fins
+  drawRealisticFlipper(ctx, hl * 0.14, hh * 0.46, hl * 0.40, hh * 0.28, 0.78 + Math.sin(phase) * 0.12, '#4761A8', rimStroke, false);
+  drawRealisticFlipper(ctx, -hl * 0.30, hh * 0.42, hl * 0.20, hh * 0.18, 0.94, '#4761A8', rimStroke, false);
+
+  // Iconic Huge Round Eye with Soft-Toned Bony Sclerotic Ring
+  drawNaturalEye(ctx, hl * 0.48, -hh * 0.16, 7.6, 'rgba(207, 216, 220, 0.82)');
 }
 
 function drawJellyfish(ctx, f, hl, hh, phase) {

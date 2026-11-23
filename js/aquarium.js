@@ -35,7 +35,7 @@ export class AquariumGame {
       ['TURTLE', '綠海龜 奔奔', '#2E7D32', '#FFD54F', 98, 60],
       ['ANGLERFISH', '深海安康魚', '#37474F', '#00E5FF', 94, 62],
       ['PLESIOSAURUS', '蛇頸龍 小寶', '#00897B', '#FFF176', 112, 48],
-      ['DUNKLEOSTEUS', '鐵甲鄧氏魚', '#5D4037', '#FFB300', 124, 56],
+      ['DUNKLEOSTEUS', '鄧氏魚', '#5E463A', '#C4A484', 124, 56],
     ];
     this.fishes = fishDefs.map(([species, name, primaryColor, secondaryColor, length, bodyHeight]) => {
       const dir = Math.random() < 0.5 ? 1 : -1;

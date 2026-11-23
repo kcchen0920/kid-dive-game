@@ -188,8 +188,8 @@ export class DiveGame {
         this.spawnSpecies(d[0], d[1], d[2], d[3], 1 + (Math.random() < 0.4 ? 1 : 0), d[4], d[5], d[6], d[7], d[8], d[9], d[10]);
       }
     }
-    // Guaranteed 1-2 Dunkleosteus (鐵甲鄧氏魚) in deep trench & abyssal zone
-    this.spawnSpecies('DUNKLEOSTEUS', '鐵甲鄧氏魚', 550, 540, 1 + (Math.random() < 0.5 ? 1 : 0), 2400, 5800, '#5D4037', '#FFB300', 255, 108, 1.15);
+    // Guaranteed 1-2 Devonian Dunkleosteus (原始鄧氏魚) in deep trench & abyssal zone
+    this.spawnSpecies('DUNKLEOSTEUS', '鄧氏魚', 550, 540, 1 + (Math.random() < 0.5 ? 1 : 0), 2400, 5800, '#5E463A', '#C4A484', 255, 108, 1.15);
 
     // Underwater Cliff Ledges, Anchored Swaying Kelp & Glowing Minerals
     this.cliffLedges = [];
@@ -1047,7 +1047,7 @@ export class DiveGame {
             f.isAttacking = false;
             f.cooldownTimer = cooldownDur;
             this.sound.playHurt();
-            this.addFX(this.diverX, this.diverY - 50, isDunk ? '🛡️ 被鐵甲鄧氏魚頂了一下！' : '🫧 被鯊魚頂了一下！', '#FFD54F', 28);
+            this.addFX(this.diverX, this.diverY - 50, isDunk ? '🫧 被鄧氏魚頂了一下！' : '🫧 被鯊魚頂了一下！', '#FFD54F', 28);
             if (this.oxygen <= 0) this.triggerDolphinRescue();
           } else if (f.chargeTimer <= 0) {
             f.isAttacking = false;
@@ -1131,11 +1131,11 @@ export class DiveGame {
       if (this.harpoonState === 'FIRING') {
         for (const f of this.fishes) {
           if (Math.hypot(this.harpoonX - f.x, this.harpoonY - f.y) < f.bodyHeight * 0.65) {
-            // Dunkleosteus Armor Dual-Solution: Harpoon Lv.<4 deflects gently with icon hint
+            // Dunkleosteus Bone-Plate Dual-Solution: Harpoon Lv.<4 deflects gently with icon hint
             if (f.species === 'DUNKLEOSTEUS' && this.state.harpoonLevel < 4) {
               this.sound.playBubble();
-              this.spawnBurst(this.harpoonX, this.harpoonY, '#FFD54F', 8);
-              this.addFX(f.x, f.y - 62, '🛡️ → 🫧 / ⬆️🎯', '#FFD54F', 28);
+              this.spawnBurst(this.harpoonX, this.harpoonY, '#C4A484', 8);
+              this.addFX(f.x, f.y - 62, '🦴 → 🫧 / ⬆️🎯', '#FFD54F', 28);
               this.harpoonState = 'REELING';
               break;
             }
@@ -1897,7 +1897,7 @@ export class DiveGame {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('v2.0', w - 14, h - 12);
+    ctx.fillText('v2.1', w - 14, h - 12);
     ctx.textAlign = 'left';
 
     if (this.hurtFlashTimer > 0) {

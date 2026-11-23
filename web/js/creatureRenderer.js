@@ -65,192 +65,226 @@ export function renderCreature(ctx, f, options = {}) {
 
   // Sleep bubble overlay in world space
   if (drawStatus && f.isSleeping) {
+    const bubbleR = sp === 'ELASMOSAURUS'
+      ? hl * 1.32
+      : (sp === 'PLESIOSAURUS' || sp === 'NOTHOSAURUS')
+        ? hl * 1.12
+        : Math.max(len, bh) * 0.62;
     ctx.strokeStyle = '#00E5FF';
     ctx.lineWidth = 3;
     ctx.fillStyle = 'rgba(0, 229, 255, 0.22)';
     ctx.beginPath();
-    ctx.arc(f.x, f.y, Math.max(len, bh) * 0.62, 0, Math.PI * 2);
+    ctx.arc(f.x, f.y, bubbleR, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.font = '24px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('💤', f.x, f.y - bh * 0.72);
+    ctx.fillText('💤', f.x, f.y - bubbleR * 0.72);
     ctx.textAlign = 'left';
   }
 }
 
 function drawDunkleosteus(ctx, f, hl, hh, phase, tail, rimStroke, rimWidth) {
-  // 1. Heterocercal Paleozoic Tail (tall upper lobe, short rounded lower lobe)
-  ctx.fillStyle = '#1A237E';
+  // Authentic Devonian Placoderm (原始鄧氏魚): interlocking dermal bone plates,
+  // smooth unarmored rear fish body, blunted ivory gnathal bone blades, asymmetric heterocercal tail.
+  const boneDark = '#46332A';
+  const boneMid = '#5E463A';
+  const boneLight = '#7B6051';
+  const sutureWarm = '#C4A484';
+  const finWave = Math.sin(phase * 0.9) * 0.20;
+
+  // 1. Asymmetric Heterocercal Tail (tall upper lobe, shorter rounded lower lobe)
+  ctx.fillStyle = '#3E4649';
   ctx.beginPath();
-  ctx.moveTo(-hl * 0.78, -hh * 0.18);
-  ctx.quadraticCurveTo(-hl * 1.08, -hh * 0.52 + tail * 0.5, -hl * 1.38 + tail, -hh * 1.08);
-  ctx.quadraticCurveTo(-hl * 1.12 + tail * 0.5, -hh * 0.12, -hl * 1.12 + tail * 0.8, hh * 0.56);
-  ctx.quadraticCurveTo(-hl * 0.94, hh * 0.35, -hl * 0.78, hh * 0.18);
+  ctx.moveTo(-hl * 0.76, -hh * 0.18);
+  ctx.quadraticCurveTo(-hl * 1.08, -hh * 0.56 + tail * 0.5, -hl * 1.40 + tail, -hh * 1.06);
+  ctx.quadraticCurveTo(-hl * 1.12 + tail * 0.5, -hh * 0.14, -hl * 1.12 + tail * 0.8, hh * 0.52);
+  ctx.quadraticCurveTo(-hl * 0.94, hh * 0.34, -hl * 0.76, hh * 0.18);
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // 2. Rear-set Dorsal Fin
-  ctx.fillStyle = '#3949AB';
+  // 2. Small Rear-set Dorsal Fin & Far Pectoral Fin
+  ctx.fillStyle = '#4B5559';
   ctx.beginPath();
-  ctx.moveTo(-hl * 0.25, -hh * 0.62);
-  ctx.quadraticCurveTo(-hl * 0.46, -hh * 1.18, -hl * 0.62, -hh * 0.48);
+  ctx.moveTo(-hl * 0.26, -hh * 0.62);
+  ctx.quadraticCurveTo(-hl * 0.46, -hh * 1.12, -hl * 0.62, -hh * 0.48);
   ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = rimStroke;
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
 
-  // 3. Muscular Steel-Blue Rear Torso
-  ctx.fillStyle = '#283593';
+  ctx.save();
+  ctx.translate(hl * 0.08, hh * 0.56);
+  ctx.rotate(0.55 - finWave * 0.8);
+  ctx.fillStyle = 'rgba(54, 42, 36, 0.75)';
   ctx.beginPath();
-  ctx.moveTo(hl * 0.22, -hh * 0.88);
-  ctx.bezierCurveTo(-hl * 0.25, -hh * 0.92, -hl * 0.65, -hh * 0.48, -hl * 0.90, 0);
-  ctx.bezierCurveTo(-hl * 0.65, hh * 0.46, -hl * 0.25, hh * 0.82, hl * 0.22, hh * 0.78);
+  ctx.ellipse(0, hh * 0.20, hl * 0.17, hh * 0.30, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // 3. Smooth Unarmored Rear Trunk (natural Devonian slate-brown skin)
+  ctx.fillStyle = '#545F63';
+  ctx.beginPath();
+  ctx.moveTo(hl * 0.20, -hh * 0.84);
+  ctx.bezierCurveTo(-hl * 0.25, -hh * 0.88, -hl * 0.65, -hh * 0.46, -hl * 0.88, 0);
+  ctx.bezierCurveTo(-hl * 0.65, hh * 0.46, -hl * 0.25, hh * 0.78, hl * 0.20, hh * 0.76);
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = rimStroke;
   ctx.lineWidth = rimWidth;
   ctx.stroke();
 
-  // Belly highlight + two bright amber lateral stripes
-  ctx.fillStyle = '#CFD8DC';
+  // Countershaded pale belly & subtle natural lateral line / muscle bands
+  ctx.fillStyle = 'rgba(222, 214, 200, 0.48)';
   ctx.beginPath();
-  ctx.ellipse(-hl * 0.24, hh * 0.42, hl * 0.42, hh * 0.24, -0.08, 0, Math.PI);
+  ctx.ellipse(-hl * 0.24, hh * 0.42, hl * 0.44, hh * 0.25, -0.06, 0, Math.PI);
   ctx.fill();
-  ctx.strokeStyle = '#FFD54F';
-  ctx.lineWidth = 3;
-  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(hl * 0.04, -hh * 0.16);
-  ctx.quadraticCurveTo(-hl * 0.35, -hh * 0.12, -hl * 0.72, -hh * 0.04);
-  ctx.moveTo(hl * 0.02, hh * 0.06);
-  ctx.quadraticCurveTo(-hl * 0.35, hh * 0.10, -hl * 0.66, hh * 0.08);
+  ctx.moveTo(hl * 0.02, -hh * 0.08);
+  ctx.quadraticCurveTo(-hl * 0.36, -hh * 0.04, -hl * 0.74, 0);
   ctx.stroke();
 
-  // Thick Amber-Edged Pectoral Fin
-  const finWave = Math.sin(phase * 0.9) * 0.22;
-  ctx.save();
-  ctx.translate(hl * 0.04, hh * 0.62);
-  ctx.rotate(0.32 + finWave);
-  ctx.fillStyle = '#4E342E';
-  ctx.strokeStyle = '#FFB300';
-  ctx.lineWidth = 2.5;
+  // Small pelvic fin
+  ctx.fillStyle = '#4B5559';
   ctx.beginPath();
-  ctx.ellipse(0, hh * 0.22, hl * 0.20, hh * 0.36, 0, 0, Math.PI * 2);
+  ctx.ellipse(-hl * 0.34, hh * 0.62, hl * 0.10, hh * 0.16, 0.45, 0, Math.PI * 2);
   ctx.fill();
-  ctx.stroke();
-  ctx.restore();
 
-  // 4. Scissor Bone-Plate Lower Jaw (animated snap on telegraph or feeding)
-  let jawAng = 0.08 + 0.14 * Math.abs(Math.sin(phase * 0.65));
+  // 4. Articulated Lower Jaw with Blunted Ivory Gnathal Bone Plate
+  let jawAng = 0.06 + 0.12 * Math.abs(Math.sin(phase * 0.65));
   if (f.telegraphTimer > 0) {
-    jawAng = 0.10 + 0.30 * Math.abs(Math.sin(f.telegraphTimer * 22));
+    jawAng = 0.08 + 0.26 * Math.abs(Math.sin(f.telegraphTimer * 22));
   } else if (f.chompTimer > 0) {
-    jawAng = 0.06 + 0.32 * Math.abs(Math.sin(f.chompTimer * 26));
+    jawAng = 0.06 + 0.28 * Math.abs(Math.sin(f.chompTimer * 26));
   }
   ctx.save();
   ctx.translate(hl * 0.28, hh * 0.26);
   ctx.rotate(jawAng);
-  // Armored lower chin
-  ctx.fillStyle = '#4E342E';
+  ctx.fillStyle = boneDark;
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.lineTo(hl * 0.66, hh * 0.04);
-  ctx.quadraticCurveTo(hl * 0.56, hh * 0.44, hl * 0.02, hh * 0.42);
+  ctx.lineTo(hl * 0.65, hh * 0.04);
+  ctx.quadraticCurveTo(hl * 0.55, hh * 0.42, hl * 0.02, hh * 0.40);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#FFB300';
-  ctx.lineWidth = 2.6;
+  ctx.strokeStyle = rimStroke;
+  ctx.lineWidth = 2.2;
   ctx.stroke();
-  // Rounded Ivory Lower Shearing Bone Blade
-  ctx.fillStyle = '#FFF8E1';
+  // Rounded ivory-cream lower shearing bone plate (paleontologically accurate, no sharp teeth)
+  ctx.fillStyle = '#F3ECD8';
   ctx.beginPath();
   ctx.moveTo(hl * 0.14, 0);
-  ctx.quadraticCurveTo(hl * 0.32, -hh * 0.18, hl * 0.44, -hh * 0.04);
-  ctx.quadraticCurveTo(hl * 0.55, -hh * 0.20, hl * 0.65, 0);
-  ctx.lineTo(hl * 0.62, hh * 0.10);
-  ctx.lineTo(hl * 0.14, hh * 0.10);
+  ctx.quadraticCurveTo(hl * 0.32, -hh * 0.15, hl * 0.44, -hh * 0.03);
+  ctx.quadraticCurveTo(hl * 0.55, -hh * 0.16, hl * 0.64, 0);
+  ctx.lineTo(hl * 0.60, hh * 0.09);
+  ctx.lineTo(hl * 0.14, hh * 0.09);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = '#FFB300';
-  ctx.lineWidth = 1.8;
+  ctx.strokeStyle = 'rgba(70, 51, 42, 0.5)';
+  ctx.lineWidth = 1.4;
   ctx.stroke();
   ctx.restore();
 
-  // 5. Heavy Armored Head Shield (42% of length, stepped collar)
-  ctx.fillStyle = '#5D4037';
+  // 5. Heavy Interlocking Dermal Head & Thoracic Bone Shield (organic Devonian bone)
+  ctx.fillStyle = boneMid;
   ctx.beginPath();
-  ctx.moveTo(hl * 0.06, -hh * 0.96);
-  ctx.bezierCurveTo(hl * 0.46, -hh * 1.06, hl * 0.88, -hh * 0.66, hl * 0.98, -hh * 0.06);
-  ctx.lineTo(hl * 0.94, hh * 0.16);
+  ctx.moveTo(hl * 0.04, -hh * 0.92);
+  ctx.bezierCurveTo(hl * 0.45, -hh * 1.02, hl * 0.86, -hh * 0.64, hl * 0.96, -hh * 0.06);
+  ctx.lineTo(hl * 0.92, hh * 0.16);
   ctx.lineTo(hl * 0.44, hh * 0.18);
   ctx.lineTo(hl * 0.22, hh * 0.34);
-  ctx.lineTo(hl * 0.06, hh * 0.84);
-  ctx.quadraticCurveTo(hl * 0.18, 0, hl * 0.06, -hh * 0.96);
+  ctx.lineTo(hl * 0.05, hh * 0.80);
+  ctx.quadraticCurveTo(hl * 0.16, 0, hl * 0.04, -hh * 0.92);
   ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = rimStroke;
+  ctx.lineWidth = rimWidth;
+  ctx.stroke();
 
-  // Lighter highlight top armor plate
-  ctx.fillStyle = '#8D6E63';
+  // Thoracic collar darker bone plate & cranial top bone highlight
+  ctx.fillStyle = boneDark;
   ctx.beginPath();
-  ctx.moveTo(hl * 0.14, -hh * 0.86);
-  ctx.quadraticCurveTo(hl * 0.54, -hh * 0.94, hl * 0.86, -hh * 0.46);
-  ctx.quadraticCurveTo(hl * 0.48, -hh * 0.44, hl * 0.16, -hh * 0.36);
+  ctx.moveTo(hl * 0.05, -hh * 0.90);
+  ctx.lineTo(hl * 0.34, -hh * 0.90);
+  ctx.quadraticCurveTo(hl * 0.25, -hh * 0.08, hl * 0.30, hh * 0.64);
+  ctx.lineTo(hl * 0.06, hh * 0.78);
+  ctx.quadraticCurveTo(hl * 0.16, 0, hl * 0.05, -hh * 0.90);
   ctx.closePath();
   ctx.fill();
 
-  // Upper Ivory Shearing Bone Blade
-  ctx.fillStyle = '#FFF8E1';
+  ctx.fillStyle = boneLight;
+  ctx.beginPath();
+  ctx.moveTo(hl * 0.36, -hh * 0.84);
+  ctx.quadraticCurveTo(hl * 0.66, -hh * 0.82, hl * 0.88, -hh * 0.42);
+  ctx.quadraticCurveTo(hl * 0.56, -hh * 0.40, hl * 0.34, -hh * 0.36);
+  ctx.closePath();
+  ctx.fill();
+
+  // Upper ivory-cream gnathal bone plate
+  ctx.fillStyle = '#F3ECD8';
   ctx.beginPath();
   ctx.moveTo(hl * 0.46, hh * 0.12);
-  ctx.lineTo(hl * 0.95, hh * 0.10);
-  ctx.quadraticCurveTo(hl * 0.86, hh * 0.32, hl * 0.72, hh * 0.18);
-  ctx.quadraticCurveTo(hl * 0.58, hh * 0.32, hl * 0.46, hh * 0.18);
+  ctx.lineTo(hl * 0.93, hh * 0.10);
+  ctx.quadraticCurveTo(hl * 0.84, hh * 0.28, hl * 0.72, hh * 0.17);
+  ctx.quadraticCurveTo(hl * 0.58, hh * 0.28, hl * 0.46, hh * 0.17);
   ctx.closePath();
   ctx.fill();
-
-  // Bold 3px Amber-Gold Armor Collar & Plate Seams
-  ctx.strokeStyle = '#FFB300';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(hl * 0.06, -hh * 0.96);
-  ctx.bezierCurveTo(hl * 0.46, -hh * 1.06, hl * 0.88, -hh * 0.66, hl * 0.98, -hh * 0.06);
-  ctx.stroke();
-  // Stepped collar arc
-  ctx.beginPath();
-  ctx.moveTo(hl * 0.06, -hh * 0.96);
-  ctx.quadraticCurveTo(hl * 0.22, 0, hl * 0.06, hh * 0.84);
-  ctx.stroke();
-  // Geometric plate seams
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  ctx.moveTo(hl * 0.38, -hh * 0.94);
-  ctx.lineTo(hl * 0.30, -hh * 0.22);
-  ctx.lineTo(hl * 0.72, -hh * 0.16);
-  ctx.moveTo(hl * 0.30, -hh * 0.22);
-  ctx.lineTo(hl * 0.14, hh * 0.25);
+  ctx.strokeStyle = 'rgba(70, 51, 42, 0.5)';
+  ctx.lineWidth = 1.4;
   ctx.stroke();
 
-  // 3 Cartoon Gold Armor Rivets
-  ctx.fillStyle = '#FFD54F';
-  for (const [rx, ry] of [[hl * 0.22, -hh * 0.62], [hl * 0.22, -hh * 0.30], [hl * 0.20, hh * 0.04]]) {
-    ctx.beginPath();
-    ctx.arc(rx, ry, 3.6, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Warm bronze-ochre organic bone plate sutures (natural fossils, zero sci-fi rivets)
+  ctx.strokeStyle = sutureWarm;
+  ctx.lineWidth = 2.0;
+  ctx.beginPath();
+  // Cranial-thoracic neck hinge suture
+  ctx.moveTo(hl * 0.34, -hh * 0.90);
+  ctx.quadraticCurveTo(hl * 0.25, -hh * 0.08, hl * 0.30, hh * 0.64);
+  // Posterior dermal collar edge
+  ctx.moveTo(hl * 0.05, -hh * 0.90);
+  ctx.quadraticCurveTo(hl * 0.16, 0, hl * 0.06, hh * 0.78);
+  // Natural cheek & dorsal skull sutures
+  ctx.moveTo(hl * 0.30, -hh * 0.34);
+  ctx.quadraticCurveTo(hl * 0.56, -hh * 0.42, hl * 0.84, -hh * 0.18);
+  ctx.moveTo(hl * 0.28, hh * 0.12);
+  ctx.lineTo(hl * 0.52, hh * 0.05);
+  ctx.stroke();
 
-  // Prominent Glowing Eye with Amber Sclerotic Ring
+  // Near-side Pectoral Fin (layered cleanly over lower thoracic plate)
+  ctx.save();
+  ctx.translate(hl * 0.04, hh * 0.62);
+  ctx.rotate(0.32 + finWave);
+  ctx.fillStyle = boneLight;
+  ctx.strokeStyle = rimStroke;
+  ctx.lineWidth = 2.1;
+  ctx.beginPath();
+  ctx.moveTo(0, -hh * 0.14);
+  ctx.quadraticCurveTo(hl * 0.14, hh * 0.08, hl * 0.04, hh * 0.56);
+  ctx.quadraticCurveTo(-hl * 0.14, hh * 0.38, -hl * 0.10, -hh * 0.06);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // Nostril & Natural Bright Friendly Eye with Subtle Bone Ring
+  ctx.fillStyle = 'rgba(30, 18, 12, 0.58)';
+  ctx.beginPath(); ctx.ellipse(hl * 0.84, -hh * 0.14, 3.0, 1.8, -0.2, 0, Math.PI * 2); ctx.fill();
   const ex = hl * 0.56;
-  const ey = -hh * 0.30;
-  ctx.fillStyle = '#FFB300';
-  ctx.beginPath(); ctx.arc(ex, ey, 10.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#80DEEA';
-  ctx.beginPath(); ctx.arc(ex, ey, 7.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#111111';
-  ctx.beginPath(); ctx.arc(ex + 1.5, ey, 4.0, 0, Math.PI * 2); ctx.fill();
+  const ey = -hh * 0.28;
+  ctx.fillStyle = sutureWarm;
+  ctx.beginPath(); ctx.arc(ex, ey, 9.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFFDE7';
+  ctx.beginPath(); ctx.arc(ex, ey, 6.8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#111827';
+  ctx.beginPath(); ctx.arc(ex + 1.4, ey, 3.8, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath(); ctx.arc(ex + 3.0, ey - 2.2, 2.0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(ex + 2.8, ey - 2.0, 1.8, 0, Math.PI * 2); ctx.fill();
 }
 
 function drawMosasaurus(ctx, f, hl, hh, phase, rimStroke, rimWidth) {
